@@ -1,0 +1,35 @@
+{
+  "name": "rezets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rezets: a CNC machine control interface",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @rezets/desktop",
+    "build": "npm run build -w @rezets/desktop",
+    "dist": "npm run dist -w @rezets/desktop",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run test:e2e -w @rezets/desktop",
+    "typecheck": "npm run typecheck -w @rezets/core && npm run typecheck -w @rezets/desktop",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-vue": "^10.12.0",
+    "globals": "^16.0.0",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0",
+    "vue-eslint-parser": "^10.0.0"
+  }
+}

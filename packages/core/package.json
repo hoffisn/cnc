@@ -1,0 +1,13 @@
+{
+  "name": "@rezets/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rezets core: domain model and use cases, free of UI and platform dependencies, shared by the desktop and mobile applications.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

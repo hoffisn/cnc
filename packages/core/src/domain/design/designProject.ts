@@ -1,0 +1,157 @@
+import { DesignOperationKind, ToolSide, type DesignOperation, type SheetPoint } from './designOperation';
+import { DEFAULT_WORK_SURFACE, LengthUnit, ZeroOrigin, type WorkSurface } from './workSurface';
+
+/** Current schema of persisted projects. */
+export const DESIGN_PROJECT_SCHEMA_VERSION = 1;
+
+/**
+ * What an engineer is making: the surface and the ordered list of operations.
+ * This is the source of truth; G-code is derived from it and never edited back.
+ */
+export interface DesignProject {
+  readonly schemaVersion: number;
+  readonly surface: WorkSurface;
+  /** Operations in cutting order. */
+  readonly operations: readonly DesignOperation[];
+}
+
+/** A project with nothing drawn yet. */
+export const EMPTY_DESIGN_PROJECT: DesignProject = {
+  schemaVersion: DESIGN_PROJECT_SCHEMA_VERSION,
+  surface: DEFAULT_WORK_SURFACE,
+  operations: [],
+};
+
+/** Result of reading a project from untrusted storage. */
+export interface ParsedDesignProject {
+  readonly project: DesignProject;
+  /** Some stored values were damaged and got replaced with defaults or dropped. */
+  readonly wasRecovered: boolean;
+}
+
+type UnknownRecord = Readonly<Record<string, unknown>>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const isEnumValue = <TEnum extends string>(enumObject: Readonly<Record<string, TEnum>>, value: unknown): value is TEnum =>
+  Object.values(enumObject).includes(value as TEnum);
+
+function readPoint(value: unknown): SheetPoint | null {
+  if (!isRecord(value) || !isFiniteNumber(value.x) || !isFiniteNumber(value.y)) return null;
+  return { x: value.x, y: value.y };
+}
+
+/** Reads one stored operation. Geometry validity is checked later by the design rules, as for any edit. */
+function parseOperation(stored: unknown): DesignOperation | null {
+  if (!isRecord(stored)) return null;
+  const { id, kind, depthMm } = stored;
+  if (typeof id !== 'string' || id.length === 0 || !isFiniteNumber(depthMm)) return null;
+
+  const center = readPoint(stored.center);
+  const corner = readPoint(stored.corner);
+  const { widthMm, heightMm, diameterMm, toolSide } = stored;
+  const hasRectangle = corner !== null && isFiniteNumber(widthMm) && isFiniteNumber(heightMm);
+  const hasCircle = center !== null && isFiniteNumber(diameterMm);
+  const hasToolSide = isEnumValue<ToolSide>(ToolSide, toolSide);
+
+  switch (kind) {
+    case DesignOperationKind.Hole:
+      return center && { kind, id, depthMm, center };
+    case DesignOperationKind.HoleGrid: {
+      const origin = readPoint(stored.origin);
+      const { columnCount, rowCount, spacingXMm, spacingYMm } = stored;
+      if (!origin || !isFiniteNumber(spacingXMm) || !isFiniteNumber(spacingYMm)) return null;
+      if (!Number.isInteger(columnCount) || !Number.isInteger(rowCount)) return null;
+      return { kind, id, depthMm, origin, columnCount: columnCount as number, rowCount: rowCount as number, spacingXMm, spacingYMm };
+    }
+    case DesignOperationKind.Slot: {
+      const start = readPoint(stored.start);
+      const end = readPoint(stored.end);
+      return start && end && { kind, id, depthMm, start, end };
+    }
+    case DesignOperationKind.RectangleOutline:
+      return hasRectangle && hasToolSide ? { kind, id, depthMm, corner, widthMm, heightMm, toolSide } : null;
+    case DesignOperationKind.CircleOutline:
+      return hasCircle && hasToolSide ? { kind, id, depthMm, center, diameterMm, toolSide } : null;
+    case DesignOperationKind.RectanglePocket:
+      return hasRectangle ? { kind, id, depthMm, corner, widthMm, heightMm } : null;
+    case DesignOperationKind.CirclePocket:
+      return hasCircle ? { kind, id, depthMm, center, diameterMm } : null;
+    default:
+      return null;
+  }
+}
+
+/** Reads a work surface field by field, so one damaged value does not discard the others. */
+function parseWorkSurface(stored: UnknownRecord): { surface: WorkSurface; wasRecovered: boolean } {
+  let wasRecovered = false;
+  const positive = (key: keyof WorkSurface, defaultValue: number): number => {
+    const value = stored[key];
+    if (isFiniteNumber(value) && value > 0) return value;
+    wasRecovered = true;
+    return defaultValue;
+  };
+  const nonNegative = (key: keyof WorkSurface, defaultValue: number): number => {
+    const value = stored[key];
+    if (isFiniteNumber(value) && value >= 0) return value;
+    wasRecovered = true;
+    return defaultValue;
+  };
+  const defaults = DEFAULT_WORK_SURFACE;
+  const { zeroOrigin, displayUnit } = stored;
+  if (!isEnumValue<ZeroOrigin>(ZeroOrigin, zeroOrigin) || !isEnumValue<LengthUnit>(LengthUnit, displayUnit)) {
+    wasRecovered = true;
+  }
+
+  return {
+    surface: {
+      tableWidthMm: positive('tableWidthMm', defaults.tableWidthMm),
+      tableDepthMm: positive('tableDepthMm', defaults.tableDepthMm),
+      sheetWidthMm: positive('sheetWidthMm', defaults.sheetWidthMm),
+      sheetDepthMm: positive('sheetDepthMm', defaults.sheetDepthMm),
+      sheetThicknessMm: positive('sheetThicknessMm', defaults.sheetThicknessMm),
+      sheetOffsetXMm: nonNegative('sheetOffsetXMm', defaults.sheetOffsetXMm),
+      sheetOffsetYMm: nonNegative('sheetOffsetYMm', defaults.sheetOffsetYMm),
+      zeroOrigin: isEnumValue<ZeroOrigin>(ZeroOrigin, zeroOrigin) ? zeroOrigin : defaults.zeroOrigin,
+      toolDiameterMm: positive('toolDiameterMm', defaults.toolDiameterMm),
+      safeHeightMm: positive('safeHeightMm', defaults.safeHeightMm),
+      feedRate: positive('feedRate', defaults.feedRate),
+      plungeFeedRate: positive('plungeFeedRate', defaults.plungeFeedRate),
+      depthPerPassMm: positive('depthPerPassMm', defaults.depthPerPassMm),
+      spindleSpeedRpm: positive('spindleSpeedRpm', defaults.spindleSpeedRpm),
+      displayUnit: isEnumValue<LengthUnit>(LengthUnit, displayUnit) ? displayUnit : defaults.displayUnit,
+    },
+    wasRecovered,
+  };
+}
+
+/**
+ * Reads a project loaded from disk.
+ *
+ * @param stored - Raw stored value; `null` or `undefined` means no project was saved yet.
+ */
+export function parseDesignProject(stored: unknown): ParsedDesignProject {
+  if (stored === null || stored === undefined) return { project: EMPTY_DESIGN_PROJECT, wasRecovered: false };
+  if (!isRecord(stored)) return { project: EMPTY_DESIGN_PROJECT, wasRecovered: true };
+
+  const parsedSurface = parseWorkSurface(isRecord(stored.surface) ? stored.surface : {});
+  const storedOperations: readonly unknown[] = Array.isArray(stored.operations) ? stored.operations : [];
+  const knownIds = new Set<string>();
+  const operations: DesignOperation[] = [];
+  for (const storedOperation of storedOperations) {
+    const operation = parseOperation(storedOperation);
+    if (operation && !knownIds.has(operation.id)) {
+      knownIds.add(operation.id);
+      operations.push(operation);
+    }
+  }
+
+  return {
+    project: { schemaVersion: DESIGN_PROJECT_SCHEMA_VERSION, surface: parsedSurface.surface, operations },
+    wasRecovered:
+      parsedSurface.wasRecovered || !Array.isArray(stored.operations) || operations.length !== storedOperations.length,
+  };
+}
