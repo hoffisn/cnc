@@ -21,6 +21,7 @@
     "@lezer/highlight": "^1.2.5",
     "@lucide/vue": "^1.68.0",
     "@rezets/core": "0.1.0",
+    "dxf-parser": "1.1.2",
     "three": "^0.187.0",
     "vue": "^3.5.44"
   },

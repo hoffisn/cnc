@@ -135,6 +135,7 @@ export {
   planShapeEngraving,
   planShapeOutline,
   planShapePocket,
+  simplifyLine,
   type ToolLine,
 } from '@core/domain/design/shapeGeometry';
 

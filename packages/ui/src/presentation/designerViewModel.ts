@@ -1,20 +1,24 @@
 import { computed, ref, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue';
 import {
+  DEFAULT_HOLDING_TABS,
+  DesignOperationKind,
+  IDENTITY_SCALE,
   SaveProgramStatus,
+  ShapeCut,
+  ToolSide,
   boundsSize,
   buildToolpath,
   computeRelief,
   createShapeFromPoints,
   describeSheetStock,
+  findPathsBounds,
   findDesignIssues,
   generateDesignGCode,
   parseGCode,
   translateOperation,
-  IDENTITY_SCALE,
   type Bounds,
   type DesignIssue,
   type DesignOperation,
-  type DesignOperationKind,
   type DesignProject,
   type DesignProjectService,
   type GCodeProgram,
@@ -26,6 +30,7 @@ import {
   type Vector3,
   type WorkSurface,
 } from '@rezets/core';
+import { DrawingImportFailure, importDrawing } from '@ui/infrastructure/drawingImport';
 import { createExampleOperations } from '@ui/presentation/designExample';
 import type { MachineViewModel } from '@ui/presentation/machineViewModel';
 import { AppSection } from '@ui/presentation/navigation';
@@ -33,6 +38,12 @@ import { NotificationTone, type NotificationCenter } from '@ui/presentation/noti
 import type { ProgramWorkspace } from '@ui/presentation/programWorkspace';
 
 const DESIGN_PROGRAM_FILE_NAME = 'design.nc';
+
+const IMPORT_FAILURE_MESSAGES: Readonly<Record<DrawingImportFailure, string>> = {
+  [DrawingImportFailure.UnknownFormat]: 'Поддерживаются чертежи SVG и DXF',
+  [DrawingImportFailure.Unreadable]: 'Не удалось прочитать чертёж: файл повреждён или это не SVG и не DXF',
+  [DrawingImportFailure.NoLines]: 'В чертеже нет линий, по которым может пройти фреза',
+};
 const PREVIEW_CHORD_TOLERANCE_MM = 0.05;
 const RELIEF_DELAY_MS = 120;
 const DEFAULT_SNAP_STEP_MM = 5;
@@ -134,6 +145,43 @@ export class DesignerViewModel {
     );
     this.selectedOperationId.value = operation.id;
     this.activeTool.value = null;
+  }
+
+  /**
+   * Places a drawing from another program in the middle of the sheet, at its real size.
+   * Closed outlines are cut out; a drawing of open lines only is engraved.
+   */
+  importDrawing(fileName: string, text: string): void {
+    const { notifications, projectService } = this.dependencies;
+    const result = importDrawing(fileName, text);
+    if (!result.ok) {
+      notifications.show(NotificationTone.Error, IMPORT_FAILURE_MESSAGES[result.error]);
+      return;
+    }
+    const bounds = findPathsBounds(result.value);
+    if (!bounds) return;
+    const { surface } = this.project.value;
+    const shiftX = surface.sheetWidthMm / 2 - (bounds.minX + bounds.maxX) / 2;
+    const shiftY = surface.sheetDepthMm / 2 - (bounds.minY + bounds.maxY) / 2;
+    const paths = result.value.map((path) => ({
+      ...path,
+      points: path.points.map((point) => ({ x: point.x + shiftX, y: point.y + shiftY })),
+    }));
+    const operation = projectService.addOperation((id, depthMm) => ({
+      kind: DesignOperationKind.Shape,
+      id,
+      depthMm,
+      paths,
+      cut: paths.some((path) => path.isClosed) ? ShapeCut.Outline : ShapeCut.Engrave,
+      toolSide: ToolSide.Outside,
+      tabs: DEFAULT_HOLDING_TABS,
+    }));
+    this.selectedOperationId.value = operation.id;
+    const isLargerThanSheet = bounds.maxX - bounds.minX > surface.sheetWidthMm || bounds.maxY - bounds.minY > surface.sheetDepthMm;
+    notifications.show(
+      isLargerThanSheet ? NotificationTone.Warning : NotificationTone.Success,
+      isLargerThanSheet ? 'Чертёж больше листа: уменьшите его в свойствах справа' : `Чертёж «${fileName}» добавлен на лист`,
+    );
   }
 
   updateOperation(operation: DesignOperation): void {

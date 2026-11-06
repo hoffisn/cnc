@@ -86,6 +86,11 @@ export function flattenSheetPath(path: SheetPath): SheetPoint[] {
   return flattened;
 }
 
+/** Drops points lying closer than the tolerance to a straight line through their neighbors. */
+export function simplifyLine(points: readonly SheetPoint[], toleranceMm: number): SheetPoint[] {
+  return points.length < 3 ? [...points] : ramerDouglasPeuckerD(points as PathD, toleranceMm).map(toSheetPoint);
+}
+
 /** Whether a path has enough points to mean anything. */
 export const isUsablePath = (path: SheetPath): boolean => path.points.length >= (path.isClosed ? 3 : 2);
 

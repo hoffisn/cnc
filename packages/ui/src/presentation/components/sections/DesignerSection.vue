@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ChevronDown, ChevronUp, Maximize, MousePointer2, Redo2, Save, Send, Sparkles, Undo2 } from '@lucide/vue';
+import { ChevronDown, ChevronUp, FileUp, Maximize, MousePointer2, Redo2, Save, Send, Sparkles, Undo2 } from '@lucide/vue';
 import { DesignOperationKind, formatCoordinate } from '@rezets/core';
 import { useAppContext } from '@ui/presentation/appContext';
 import { DesignerView } from '@ui/presentation/designerViewModel';
@@ -30,6 +30,15 @@ const SNAP_OPTIONS = [
 const TOOLS = Object.values(DesignOperationKind);
 
 const canvas = ref<InstanceType<typeof DesignCanvas> | null>(null);
+const drawingInput = ref<HTMLInputElement | null>(null);
+
+/** Reads the chosen drawing; the input is cleared so the same file can be chosen again. */
+async function handleDrawingChosen(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (file) designer.importDrawing(file.name, await file.text());
+}
 
 const project = designer.project;
 const operations = computed(() => project.value.operations);
@@ -99,6 +108,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
             <span>{{ OPERATION_KIND_LABELS[tool] }}</span>
           </button>
         </div>
+        <button type="button" class="tools__import" data-testid="import-drawing" @click="drawingInput?.click()">
+          <FileUp :size="18" />
+          <span>Импорт SVG или DXF</span>
+        </button>
+        <input ref="drawingInput" type="file" accept=".svg,.dxf" hidden @change="handleDrawingChosen" />
       </section>
 
       <section class="operations">
@@ -279,6 +293,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
   line-height: 1.25;
   text-align: left;
   transition: background-color 120ms ease;
+}
+
+.tools__import {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-medium);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 550;
+  text-align: left;
+}
+
+.tools__import:hover {
+  border-color: var(--color-text-tertiary);
+  color: var(--color-text);
 }
 
 .tools__item:hover {

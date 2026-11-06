@@ -111,7 +111,8 @@ export function summarizeOperation(operation: DesignOperation): string {
       return `Ø ${mm(operation.diameterMm)} мм, ${depth}`;
     case DesignOperationKind.Shape: {
       const bounds = findPathsBounds(operation.paths);
-      const size = bounds ? `${mm(bounds.maxX - bounds.minX)} × ${mm(bounds.maxY - bounds.minY)} мм` : 'пусто';
+      const rounded = (value: number): string => mm(Math.round(value * 100) / 100);
+      const size = bounds ? `${rounded(bounds.maxX - bounds.minX)} × ${rounded(bounds.maxY - bounds.minY)} мм` : 'пусто';
       return `${SHAPE_CUT_LABELS[operation.cut]}, ${size}, ${depth}`;
     }
   }
