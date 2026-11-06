@@ -48,7 +48,9 @@ const partSizeText = computed(() => {
   const { partBounds } = props.toolpath;
   if (!partBounds) return null;
   const size = boundsSize(partBounds);
-  return `${formatCoordinate(size.x)} × ${formatCoordinate(size.y)} × ${formatCoordinate(size.z)} мм`;
+  /** A size read by a person needs no more than hundredths of a millimeter. */
+  const shown = (value: number): string => formatCoordinate(Math.round(value * 100) / 100);
+  return `${shown(size.x)} × ${shown(size.y)} × ${shown(size.z)} мм`;
 });
 
 onMounted(() => {

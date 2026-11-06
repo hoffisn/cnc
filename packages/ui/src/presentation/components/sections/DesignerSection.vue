@@ -49,7 +49,9 @@ function isEditingText(target: EventTarget | null): boolean {
 function handleKeyDown(event: KeyboardEvent): void {
   if (isEditingText(event.target)) return;
   const isCommand = event.ctrlKey || event.metaKey;
-  if (event.key === 'Escape') {
+  if (event.key === 'Enter' && designer.activeTool.value === DesignOperationKind.Shape) {
+    canvas.value?.finishShape(false);
+  } else if (event.key === 'Escape') {
     designer.activeTool.value = null;
     designer.selectedOperationId.value = null;
   } else if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -178,6 +180,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
         :snap-step-mm="designer.snapStepMm.value"
         @select-operation="designer.selectedOperationId.value = $event"
         @draw-operation="(kind, start, end) => designer.drawOperation(kind, start, end)"
+        @draw-shape="(points, isClosed) => designer.drawShape(points, isClosed)"
         @update-operation="designer.updateOperation($event)"
       />
       <ViewportStage

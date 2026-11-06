@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { DesignOperationKind, ToolSide, type DesignOperation, type SheetPoint } from '@rezets/core';
+import {
+  DesignOperationKind,
+  ShapeCut,
+  ToolSide,
+  flattenSheetPath,
+  planShapeOutline,
+  type DesignOperation,
+  type SheetPoint,
+} from '@rezets/core';
 
 const props = defineProps<{
   operation: DesignOperation;
@@ -60,6 +68,26 @@ const screenCircle = computed(() => {
     cy: props.toScreenY(operation.center.y),
     r: (operation.diameterMm / 2) * props.scale,
   };
+});
+
+/** SVG path data through sheet points; closed lines return to their start. */
+function toSvgPath(lines: readonly { points: readonly SheetPoint[]; isClosed: boolean }[]): string {
+  return lines
+    .map(({ points, isClosed }) => {
+      const commands = points.map((point, index) => `${index === 0 ? 'M' : 'L'}${props.toScreenX(point.x)} ${props.toScreenY(point.y)}`);
+      return commands.join(' ') + (isClosed ? ' Z' : '');
+    })
+    .join(' ');
+}
+
+/** The drawn lines of a free shape and, for an outline, the path of the tool along them. */
+const freeShape = computed(() => {
+  const { operation } = props;
+  if (operation.kind !== DesignOperationKind.Shape) return null;
+  const drawn = toSvgPath(operation.paths.map((path) => ({ points: flattenSheetPath(path), isClosed: path.isClosed })));
+  const toolPath =
+    operation.cut === ShapeCut.Outline ? toSvgPath(planShapeOutline(operation, props.toolDiameterMm / 2)) : drawn;
+  return { drawn, toolPath, cut: operation.cut };
 });
 
 const gridHoles = computed(() => {
@@ -134,6 +162,14 @@ const gridHoles = computed(() => {
     <rect v-else-if="operation.kind === DesignOperationKind.RectanglePocket && screenRectangle" class="shape__cut" v-bind="screenRectangle" />
     <circle v-else-if="operation.kind === DesignOperationKind.CirclePocket && screenCircle" class="shape__cut" v-bind="screenCircle" />
 
+    <template v-else-if="freeShape">
+      <path v-if="freeShape.cut === ShapeCut.Pocket" class="shape__cut" fill-rule="evenodd" :d="freeShape.drawn" />
+      <template v-else>
+        <path class="shape__kerf" :d="freeShape.toolPath" :stroke-width="Math.max(toolWidthPx, 2)" stroke-linecap="round" stroke-linejoin="round" />
+        <path class="shape__line shape__hit" fill-rule="evenodd" :d="freeShape.drawn" />
+      </template>
+    </template>
+
     <rect
       v-for="(tab, index) in tabCenters ?? []"
       :key="`tab-${index}`"
@@ -176,6 +212,10 @@ const gridHoles = computed(() => {
   fill: #fff;
   stroke: var(--shape-color);
   stroke-width: 1.5;
+}
+
+.shape__hit {
+  fill: transparent;
 }
 
 .shape__line {

@@ -91,8 +91,20 @@ export class DesignProjectService {
       start,
       end,
       toolDiameterMm: surface.toolDiameterMm,
-      depthMm: Math.min(surface.depthPerPassMm * DEFAULT_DEPTH_IN_PASSES, surface.sheetThicknessMm),
+      depthMm: this.defaultDepthMm(surface),
     });
+    this.applyChange({ ...this.project, operations: [...operations, operation] });
+    return operation;
+  }
+
+/**
+   * Adds an operation built elsewhere, such as a shape drawn point by point or an imported drawing.
+   *
+   * @param build - Receives the new operation's id and the depth a new operation starts with.
+   */
+  addOperation(build: (id: string, defaultDepthMm: number) => DesignOperation): DesignOperation {
+    const { surface, operations } = this.project;
+    const operation = build(this.generateId(), this.defaultDepthMm(surface));
     this.applyChange({ ...this.project, operations: [...operations, operation] });
     return operation;
   }
@@ -167,6 +179,10 @@ export class DesignProjectService {
   /** @returns Promise that settles once all started writes have finished. */
   whenPersisted(): Promise<void> {
     return this.pendingWrites;
+  }
+
+  private defaultDepthMm(surface: WorkSurface): number {
+    return Math.min(surface.depthPerPassMm * DEFAULT_DEPTH_IN_PASSES, surface.sheetThicknessMm);
   }
 
   private applyChange(project: DesignProject): void {

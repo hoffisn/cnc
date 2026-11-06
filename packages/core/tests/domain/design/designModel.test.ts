@@ -6,6 +6,7 @@ import {
   OperationHandleKind,
   computeCutFootprint,
   createOperationFromDrawing,
+  createShapeFromPoints,
   dragOperationHandle,
   listOperationHandles,
   translateOperation,
@@ -69,21 +70,29 @@ describe('editing shapes', () => {
   });
 
   it('keeps the opposite corner in place while resizing', () => {
-    const resized = dragOperationHandle(pocket, OperationHandleKind.CornerUpperRight, { x: 200, y: 200 });
+    const resized = dragOperationHandle(pocket, { kind: OperationHandleKind.CornerUpperRight, point: { x: 0, y: 0 } }, { x: 200, y: 200 });
     expect(resized).toMatchObject({ corner: { x: 100, y: 100 }, widthMm: 100, heightMm: 100 });
-    const fromLowerLeft = dragOperationHandle(pocket, OperationHandleKind.CornerLowerLeft, { x: 90, y: 90 });
+    const fromLowerLeft = dragOperationHandle(pocket, { kind: OperationHandleKind.CornerLowerLeft, point: { x: 0, y: 0 } }, { x: 90, y: 90 });
     expect(fromLowerLeft).toMatchObject({ corner: { x: 90, y: 90 }, widthMm: 60, heightMm: 40 });
   });
 
   it('survives dragging a corner across the opposite one', () => {
-    const flipped = dragOperationHandle(pocket, OperationHandleKind.CornerUpperRight, { x: 60, y: 60 });
+    const flipped = dragOperationHandle(pocket, { kind: OperationHandleKind.CornerUpperRight, point: { x: 0, y: 0 } }, { x: 60, y: 60 });
     expect(flipped).toMatchObject({ corner: { x: 60, y: 60 }, widthMm: 40, heightMm: 40 });
   });
 
   it('places handles where dragging them is consistent', () => {
     const handles = listOperationHandles(pocket);
     expect(handles).toHaveLength(4);
-    for (const handle of handles) expect(dragOperationHandle(pocket, handle.kind, handle.point)).toEqual(pocket);
+    for (const handle of handles) expect(dragOperationHandle(pocket, handle, handle.point)).toEqual(pocket);
+  });
+
+  it('moves one point of a drawn shape and keeps the others', () => {
+    const triangle = createShapeFromPoints({ id: 's', depthMm: 3, isClosed: true, points: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 20, y: 30 }] });
+    const [, second] = listOperationHandles(triangle);
+    if (!second) throw new Error('a vertex handle was expected');
+    const moved = dragOperationHandle(triangle, second, { x: 50, y: 5 });
+    expect(moved.paths[0]?.points).toEqual([{ x: 0, y: 0 }, { x: 50, y: 5 }, { x: 20, y: 30 }]);
   });
 });
 

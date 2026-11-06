@@ -4,6 +4,7 @@ import {
   createCircleContour,
   createOutlineContour,
   createRectangleContour,
+  lineTo,
   measureContour,
   placeTabGaps,
   splitContourAtTabs,
@@ -20,8 +21,17 @@ import {
   type RectangleOutlineOperation,
   type RectanglePocketOperation,
   type SheetPoint,
+  type ShapeOperation,
   type SlotOperation,
+  ShapeCut,
 } from './designOperation';
+import {
+  isMoveInsidePocket,
+  planShapeEngraving,
+  planShapeOutline,
+  planShapePocket,
+  type ToolLine,
+} from './shapeGeometry';
 import type { DesignProject } from './designProject';
 import { findZeroOnSheet, type WorkSurface } from './workSurface';
 
@@ -34,6 +44,28 @@ function listPassHeights(depthMm: number, depthPerPassMm: number): number[] {
   return Array.from({ length: passCount }, (_, passIndex) =>
     passIndex === passCount - 1 ? -depthMm : -(passIndex + 1) * depthPerPassMm,
   );
+}
+
+/** Contour through a list of points; a closed one returns to its start. */
+function createPolylineContour(points: readonly SheetPoint[], isClosed: boolean): Contour {
+  const [start = { x: 0, y: 0 }, ...rest] = points;
+  const steps = rest.map((point) => lineTo(point.x, point.y));
+  if (isClosed) steps.push(lineTo(start.x, start.y));
+  return { start, steps };
+}
+
+/** The same closed ring, starting at its point nearest to a position, so the tool travels as little as possible. */
+function startRingNear(ring: ToolLine, position: SheetPoint): ToolLine {
+  let nearestIndex = 0;
+  let nearestDistance = Infinity;
+  ring.points.forEach((point, index) => {
+    const distance = Math.hypot(point.x - position.x, point.y - position.y);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  return { ...ring, points: [...ring.points.slice(nearestIndex), ...ring.points.slice(0, nearestIndex)] };
 }
 
 /** Writes G-code with coordinates converted from the sheet to the chosen zero position. */
@@ -97,6 +129,10 @@ class DesignGCodeWriter {
     this.position = step.end;
   }
 
+  get currentPosition(): SheetPoint {
+    return this.position;
+  }
+
   toText(): string {
     return `${this.lines.join('\n')}\n`;
   }
@@ -148,7 +184,83 @@ class OperationGenerator {
       case DesignOperationKind.CirclePocket:
         this.cutCirclePocket(operation);
         break;
+      case DesignOperationKind.Shape:
+        this.cutShape(operation);
+        break;
     }
+  }
+
+  private cutShape(operation: ShapeOperation): void {
+    switch (operation.cut) {
+      case ShapeCut.Outline:
+        for (const line of planShapeOutline(operation, this.toolRadius)) this.cutToolLine(line, operation.depthMm, operation);
+        break;
+      case ShapeCut.Engrave:
+        for (const line of planShapeEngraving(operation)) this.cutToolLine(line, operation.depthMm, null);
+        break;
+      case ShapeCut.Pocket:
+        this.cutShapePocket(planShapePocket(operation, this.toolRadius, this.surface.toolDiameterMm * POCKET_STEP_OVER_IN_TOOL_DIAMETERS), operation.depthMm);
+        break;
+    }
+  }
+
+  /** Cuts one line of a shape; closed outlines of a through cut keep holding tabs where they fit. */
+  private cutToolLine(line: ToolLine, depthMm: number, outline: ShapeOperation | null): void {
+    if (!line.isClosed) {
+      this.cutOpenLine(line.points, depthMm);
+      return;
+    }
+    const contour = createPolylineContour(line.points, true);
+    if (outline && areHoldingTabsActive(outline.tabs, depthMm, this.surface)) {
+      const gaps = placeTabGaps(measureContour(contour), outline.tabs, this.surface.toolDiameterMm);
+      if (gaps.length > 0) {
+        this.cutContourInPasses(contour, depthMm, { pieces: splitContourAtTabs(contour, gaps), topZ: -depthMm + outline.tabs.heightMm });
+        return;
+      }
+    }
+    this.cutContourInPasses(contour, depthMm);
+  }
+
+  /** Cuts back and forth along an open line, so the tool never has to leave the groove between passes. */
+  private cutOpenLine(points: readonly SheetPoint[], depthMm: number): void {
+    const [start] = points;
+    if (!start) return;
+    const reversed = [...points].reverse();
+    this.writer.rapidTo(start);
+    listPassHeights(depthMm, this.surface.depthPerPassMm).forEach((height, passIndex) => {
+      this.writer.plungeTo(height);
+      for (const point of (passIndex % 2 === 0 ? points : reversed).slice(1)) this.writer.cutTo(point);
+    });
+    this.writer.retract();
+  }
+
+  /**
+   * Clears a pocket level by level from the middle outward, so the last ring finishes the wall.
+   * The tool stays down between rings when the straight move cannot touch a wall, and lifts otherwise.
+   */
+  private cutShapePocket(levels: readonly ToolLine[][], depthMm: number): void {
+    const [wallLevel] = levels;
+    if (!wallLevel) return;
+    const rings = [...levels].reverse().flat();
+    let isDown = false;
+    for (const height of listPassHeights(depthMm, this.surface.depthPerPassMm)) {
+      rings.forEach((ring, ringIndex) => {
+        const started = startRingNear(ring, this.writer.currentPosition);
+        const [start] = started.points;
+        if (!start) return;
+        if (isDown && isMoveInsidePocket(this.writer.currentPosition, start, wallLevel)) {
+          this.writer.cutTo(start);
+          if (ringIndex === 0) this.writer.plungeTo(height);
+        } else {
+          if (isDown) this.writer.retract();
+          this.writer.rapidTo(start);
+          this.writer.plungeTo(height);
+          isDown = true;
+        }
+        this.writer.followContour(createPolylineContour(started.points, true));
+      });
+    }
+    this.writer.retract();
   }
 
   private drillHole(center: SheetPoint, depthMm: number): void {

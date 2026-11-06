@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Copy, Trash2 } from '@lucide/vue';
-import { DesignOperationKind, ToolSide, areHoldingTabsActive, type DesignOperation } from '@rezets/core';
+import {
+  DesignOperationKind,
+  MAX_EDITABLE_VERTICES,
+  ShapeCut,
+  ToolSide,
+  areHoldingTabsActive,
+  type DesignOperation,
+} from '@rezets/core';
 import { useAppContext } from '@ui/presentation/appContext';
-import { DESIGN_ISSUE_MESSAGES, OPERATION_KIND_LABELS, TOOL_SIDE_LABELS } from '@ui/presentation/designMessages';
+import { DESIGN_ISSUE_MESSAGES, OPERATION_KIND_LABELS, SHAPE_CUT_LABELS, TOOL_SIDE_LABELS } from '@ui/presentation/designMessages';
 import { describeOperationFields, describeTabFields } from '@ui/presentation/operationFields';
 import NumberField from '@ui/presentation/components/ui/NumberField.vue';
 import SegmentedControl from '@ui/presentation/components/ui/SegmentedControl.vue';
@@ -14,6 +21,26 @@ const props = defineProps<{ operation: DesignOperation }>();
 const { designer } = useAppContext();
 
 const TOOL_SIDE_OPTIONS = Object.values(ToolSide).map((side) => ({ value: side, label: TOOL_SIDE_LABELS[side] }));
+const SHAPE_CUT_OPTIONS = Object.values(ShapeCut).map((cut) => ({ value: cut, label: SHAPE_CUT_LABELS[cut] }));
+
+const shape = computed(() => (props.operation.kind === DesignOperationKind.Shape ? props.operation : null));
+/** Smoothing is offered for shapes drawn point by point, not for dense imported drawings. */
+const canSmooth = computed(() => {
+  const vertexCount = shape.value?.paths.reduce((total, path) => total + path.points.length, 0) ?? 0;
+  return vertexCount > 0 && vertexCount <= MAX_EDITABLE_VERTICES;
+});
+const isSmooth = computed(() => shape.value?.paths.every((path) => path.isSmooth) ?? false);
+
+function setShapeCut(cut: ShapeCut): void {
+  if (shape.value) designer.updateOperation({ ...shape.value, cut });
+}
+
+function setSmooth(event: Event): void {
+  const isChecked = (event.target as HTMLInputElement).checked;
+  if (shape.value) {
+    designer.updateOperation({ ...shape.value, paths: shape.value.paths.map((path) => ({ ...path, isSmooth: isChecked })) });
+  }
+}
 
 const fields = computed(() => describeOperationFields(props.operation));
 const tabFields = computed(() => describeTabFields(props.operation));
@@ -26,6 +53,7 @@ const issues = computed(() => designer.issues.value.filter((issue) => issue.oper
 
 const toolSide = computed(() => {
   const { operation } = props;
+  if (operation.kind === DesignOperationKind.Shape) return operation.cut === ShapeCut.Outline ? operation.toolSide : null;
   return operation.kind === DesignOperationKind.RectangleOutline || operation.kind === DesignOperationKind.CircleOutline
     ? operation.toolSide
     : null;
@@ -33,7 +61,11 @@ const toolSide = computed(() => {
 
 function setToolSide(value: ToolSide): void {
   const { operation } = props;
-  if (operation.kind === DesignOperationKind.RectangleOutline || operation.kind === DesignOperationKind.CircleOutline) {
+  if (
+    operation.kind === DesignOperationKind.RectangleOutline ||
+    operation.kind === DesignOperationKind.CircleOutline ||
+    operation.kind === DesignOperationKind.Shape
+  ) {
     designer.updateOperation({ ...operation, toolSide: value });
   }
 }
@@ -53,6 +85,15 @@ function setToolSide(value: ToolSide): void {
         :data-testid="`field-${field.key}`"
         @update:model-value="designer.updateOperation(field.apply($event))"
       />
+    </div>
+
+    <div v-if="shape" class="properties__side">
+      <span class="properties__label">Что сделать</span>
+      <SegmentedControl :model-value="shape.cut" :options="SHAPE_CUT_OPTIONS" data-testid="shape-cut" @update:model-value="setShapeCut" />
+      <label v-if="canSmooth" class="properties__check">
+        <input type="checkbox" :checked="isSmooth" data-testid="shape-smooth" @change="setSmooth" />
+        Сгладить в кривую
+      </label>
     </div>
 
     <div v-if="toolSide" class="properties__side">
@@ -148,6 +189,21 @@ function setToolSide(value: ToolSide): void {
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.properties__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.properties__check input {
+  width: 18px;
+  height: 18px;
+  accent-color: #1c1c1e;
 }
 
 .properties__label {

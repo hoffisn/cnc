@@ -4,6 +4,7 @@ import {
   boundsSize,
   buildToolpath,
   computeRelief,
+  createShapeFromPoints,
   describeSheetStock,
   findDesignIssues,
   generateDesignGCode,
@@ -122,6 +123,15 @@ export class DesignerViewModel {
 
   drawOperation(kind: DesignOperationKind, start: SheetPoint, end: SheetPoint): void {
     const operation = this.dependencies.projectService.drawOperation(kind, start, end);
+    this.selectedOperationId.value = operation.id;
+    this.activeTool.value = null;
+  }
+
+  /** Adds a shape drawn point by point: a closed one is cut out, an open one engraved. */
+  drawShape(points: readonly SheetPoint[], isClosed: boolean): void {
+    const operation = this.dependencies.projectService.addOperation((id, depthMm) =>
+      createShapeFromPoints({ id, points, isClosed, depthMm }),
+    );
     this.selectedOperationId.value = operation.id;
     this.activeTool.value = null;
   }

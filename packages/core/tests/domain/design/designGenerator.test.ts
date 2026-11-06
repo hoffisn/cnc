@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateDesignGCode } from '@core/domain/design/designGenerator';
-import { DesignOperationKind, NO_HOLDING_TABS, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
+import { DesignOperationKind, NO_HOLDING_TABS, ShapeCut, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
 import { EMPTY_DESIGN_PROJECT, type DesignProject } from '@core/domain/design/designProject';
 import { DEFAULT_WORK_SURFACE, ZeroOrigin, type WorkSurface } from '@core/domain/design/workSurface';
 import { parseGCode } from '@core/domain/gcode/parser';
@@ -137,5 +137,34 @@ describe('generateDesignGCode', () => {
     expect(cut(project([hole], { zeroOrigin: ZeroOrigin.SheetLowerLeft })).text).toContain('G0 X500 Y300');
     expect(cut(project([hole], { zeroOrigin: ZeroOrigin.SheetCenter })).text).toContain('G0 X0 Y0\nG1 Z-3');
     expect(cut(project([hole], { zeroOrigin: ZeroOrigin.SheetUpperRight })).text).toContain('G0 X-500 Y-300');
+  });
+});
+
+describe('generateDesignGCode for free shapes', () => {
+  const square = { points: [{ x: 100, y: 100 }, { x: 200, y: 100 }, { x: 200, y: 160 }, { x: 100, y: 160 }], isClosed: true, isSmooth: false };
+  const shape = (cut: ShapeCut, toolSide = ToolSide.Outside): DesignOperation => ({
+    kind: DesignOperationKind.Shape,
+    id: 'shape',
+    depthMm: 6,
+    paths: [square],
+    cut,
+    toolSide,
+    tabs: NO_HOLDING_TABS,
+  });
+
+  it('runs the tool center one radius outside a drawn polygon, keeping the part to size', () => {
+    const { program, path } = cut(project([shape(ShapeCut.Outline)]));
+    expect(program.diagnostics).toEqual([]);
+    expect(path.partBounds?.min.x).toBeCloseTo(100 - TOOL_RADIUS, 2);
+    expect(path.partBounds?.max.y).toBeCloseTo(160 + TOOL_RADIUS, 2);
+  });
+
+  it('clears a pocket without the tool center leaving the area it may reach', () => {
+    const { program, path } = cut(project([shape(ShapeCut.Pocket)]));
+    expect(program.diagnostics).toEqual([]);
+    expect(path.partBounds?.min.z).toBeCloseTo(-6);
+    expect(path.partBounds?.min.x).toBeCloseTo(100 + TOOL_RADIUS, 2);
+    expect(path.partBounds?.max.x).toBeCloseTo(200 - TOOL_RADIUS, 2);
+    expect(path.partBounds?.max.y).toBeCloseTo(160 - TOOL_RADIUS, 2);
   });
 });

@@ -1,5 +1,6 @@
 import { areHoldingTabsActive, createOutlineContour, measureContour, placeTabGaps } from './designContours';
-import { DesignOperationKind, ToolSide, type DesignOperation } from './designOperation';
+import { DesignOperationKind, ShapeCut, ToolSide, type DesignOperation, type ShapeOperation } from './designOperation';
+import { hasClosedArea, isUsablePath, planShapeOutline, planShapePocket } from './shapeGeometry';
 import type { DesignProject } from './designProject';
 import { computeCutFootprint } from './operationGeometry';
 import type { WorkSurface } from './workSurface';
@@ -17,6 +18,7 @@ export enum DesignIssueCode {
   TabSizeNotPositive = 'tab-size-not-positive',
   TabNotLowerThanCut = 'tab-not-lower-than-cut',
   TabsDoNotFit = 'tabs-do-not-fit',
+  ShapeNotClosed = 'shape-not-closed',
 }
 
 /** Problem found in a project. */
@@ -28,6 +30,22 @@ export interface DesignIssue {
 
 /** Rounding of coordinates must not turn a shape touching the sheet's edge into a violation. */
 const EDGE_TOLERANCE_MM = 1e-6;
+
+/** A shape needs usable lines, an area for a pocket, and room for the tool where it runs inside. */
+function checkFreeShape(operation: ShapeOperation, toolDiameterMm: number): DesignIssueCode | null {
+  if (!operation.paths.some(isUsablePath)) return DesignIssueCode.ShapeSizeNotPositive;
+  const toolRadius = toolDiameterMm / 2;
+  switch (operation.cut) {
+    case ShapeCut.Engrave:
+      return null;
+    case ShapeCut.Pocket:
+      if (!hasClosedArea(operation.paths)) return DesignIssueCode.ShapeNotClosed;
+      return planShapePocket(operation, toolRadius, toolDiameterMm).length === 0 ? DesignIssueCode.ShapeSmallerThanTool : null;
+    case ShapeCut.Outline:
+      if (operation.toolSide !== ToolSide.Inside || !hasClosedArea(operation.paths)) return null;
+      return planShapeOutline(operation, toolRadius).some((line) => line.isClosed) ? null : DesignIssueCode.ShapeSmallerThanTool;
+  }
+}
 
 function checkShapeSize(operation: DesignOperation, toolDiameterMm: number): DesignIssueCode | null {
   const isSmallerThanTool = (size: number): boolean => size + EDGE_TOLERANCE_MM < toolDiameterMm;
@@ -60,22 +78,39 @@ function checkShapeSize(operation: DesignOperation, toolDiameterMm: number): Des
     case DesignOperationKind.CirclePocket:
       if (operation.diameterMm <= 0) return DesignIssueCode.ShapeSizeNotPositive;
       return isSmallerThanTool(operation.diameterMm) ? DesignIssueCode.ShapeSmallerThanTool : null;
+    case DesignOperationKind.Shape:
+      return checkFreeShape(operation, toolDiameterMm);
   }
 }
 
 /** Checks holding tabs where they take effect, on outlines cut through the sheet. */
 function checkHoldingTabs(operation: DesignOperation, surface: WorkSurface): DesignIssueCode | null {
-  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline) {
+  const isShapeOutline = operation.kind === DesignOperationKind.Shape && operation.cut === ShapeCut.Outline;
+  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline && !isShapeOutline) {
     return null;
   }
   const { tabs } = operation;
   if (!areHoldingTabsActive(tabs, operation.depthMm, surface)) return null;
   if (tabs.widthMm <= 0 || tabs.heightMm <= 0) return DesignIssueCode.TabSizeNotPositive;
   if (tabs.heightMm >= operation.depthMm) return DesignIssueCode.TabNotLowerThanCut;
-  const contour = createOutlineContour(operation, surface.toolDiameterMm / 2);
-  return placeTabGaps(measureContour(contour), tabs, surface.toolDiameterMm).length === 0
-    ? DesignIssueCode.TabsDoNotFit
-    : null;
+  const toolRadius = surface.toolDiameterMm / 2;
+  const contourLengths =
+    operation.kind === DesignOperationKind.Shape
+      ? planShapeOutline(operation, toolRadius)
+          .filter((line) => line.isClosed)
+          .map((line) => measurePolyline(line.points))
+      : [measureContour(createOutlineContour(operation, toolRadius))];
+  return contourLengths.some((length) => placeTabGaps(length, tabs, surface.toolDiameterMm).length > 0)
+    ? null
+    : DesignIssueCode.TabsDoNotFit;
+}
+
+/** Length of a closed polyline, including the return to its start. */
+function measurePolyline(points: readonly { x: number; y: number }[]): number {
+  return points.reduce((length, point, index) => {
+    const next = points[(index + 1) % points.length] ?? point;
+    return length + Math.hypot(next.x - point.x, next.y - point.y);
+  }, 0);
 }
 
 function isInsideSheet(operation: DesignOperation, surface: WorkSurface): boolean {

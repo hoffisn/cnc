@@ -1,4 +1,12 @@
-import { DesignOperationKind, type DesignOperation } from '@rezets/core';
+import {
+  DesignOperationKind,
+  ShapeCut,
+  findPathsBounds,
+  scaleShapePaths,
+  translateOperation,
+  type DesignOperation,
+  type ShapeOperation,
+} from '@rezets/core';
 
 /** One editable number of an operation. */
 export interface OperationField {
@@ -21,7 +29,8 @@ const clampTabCount = (value: number): number => Math.min(Math.max(Math.round(va
 
 /** Describes the holding tab numbers of an outline; other operations have none. */
 export function describeTabFields(operation: DesignOperation): OperationField[] {
-  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline) {
+  const isShapeOutline = operation.kind === DesignOperationKind.Shape && operation.cut === ShapeCut.Outline;
+  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline && !isShapeOutline) {
     return [];
   }
   const { tabs } = operation;
@@ -29,6 +38,24 @@ export function describeTabFields(operation: DesignOperation): OperationField[] 
     { key: 'tab-count', label: 'Количество', suffix: PIECES, value: tabs.count, apply: (value) => ({ ...operation, tabs: { ...tabs, count: clampTabCount(value) } }) },
     { key: 'tab-width', label: 'Длина', suffix: MM, value: tabs.widthMm, apply: (widthMm) => ({ ...operation, tabs: { ...tabs, widthMm } }) },
     { key: 'tab-height', label: 'Толщина', suffix: MM, value: tabs.heightMm, apply: (heightMm) => ({ ...operation, tabs: { ...tabs, heightMm } }) },
+  ];
+}
+
+/** Position and size of a free shape: moving keeps its form, and resizing keeps its proportions. */
+function describeShapeFields(operation: ShapeOperation): OperationField[] {
+  const bounds = findPathsBounds(operation.paths) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const anchor = { x: bounds.minX, y: bounds.minY };
+  /** Curves and imported drawings end at arbitrary positions; hundredths of a millimeter are enough to read. */
+  const shown = (value: number): number => Math.round(value * 100) / 100;
+  const resize = (target: number, current: number): DesignOperation =>
+    target > 0 && current > 0 ? { ...operation, paths: scaleShapePaths(operation.paths, target / current, anchor) } : operation;
+  return [
+    { key: 'x', label: 'X слева', suffix: MM, value: shown(bounds.minX), apply: (x) => translateOperation(operation, x - bounds.minX, 0) },
+    { key: 'y', label: 'Y снизу', suffix: MM, value: shown(bounds.minY), apply: (y) => translateOperation(operation, 0, y - bounds.minY) },
+    { key: 'width', label: 'Ширина', suffix: MM, value: shown(width), apply: (value) => resize(value, width) },
+    { key: 'height', label: 'Высота', suffix: MM, value: shown(height), apply: (value) => resize(value, height) },
   ];
 }
 
@@ -97,5 +124,7 @@ export function describeOperationFields(operation: DesignOperation): OperationFi
         depthField,
       ];
     }
+    case DesignOperationKind.Shape:
+      return [...describeShapeFields(operation), depthField];
   }
 }

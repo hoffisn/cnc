@@ -2,7 +2,9 @@ import {
   DesignIssueCode,
   DesignOperationKind,
   LengthUnit,
+  ShapeCut,
   StockMaterial,
+  findPathsBounds,
   ToolSide,
   ZeroOrigin,
   formatCoordinate,
@@ -20,6 +22,13 @@ export const OPERATION_KIND_LABELS: Readonly<Record<DesignOperationKind, string>
   [DesignOperationKind.CircleOutline]: 'Контур круга',
   [DesignOperationKind.RectanglePocket]: 'Карман прямоугольный',
   [DesignOperationKind.CirclePocket]: 'Карман круглый',
+  [DesignOperationKind.Shape]: 'Произвольный контур',
+};
+
+export const SHAPE_CUT_LABELS: Readonly<Record<ShapeCut, string>> = {
+  [ShapeCut.Outline]: 'Контур',
+  [ShapeCut.Pocket]: 'Карман',
+  [ShapeCut.Engrave]: 'По линии',
 };
 
 export const TOOL_SIDE_LABELS: Readonly<Record<ToolSide, string>> = {
@@ -79,6 +88,7 @@ export const DESIGN_ISSUE_MESSAGES: Readonly<Record<DesignIssueCode, string>> = 
   [DesignIssueCode.TabSizeNotPositive]: 'Размер перемычки должен быть больше нуля',
   [DesignIssueCode.TabNotLowerThanCut]: 'Перемычка должна быть тоньше глубины реза',
   [DesignIssueCode.TabsDoNotFit]: 'Перемычки не помещаются на контуре: уменьшите их число или длину',
+  [DesignIssueCode.ShapeNotClosed]: 'Для кармана контур должен быть замкнут',
 };
 
 const mm = formatCoordinate;
@@ -99,5 +109,10 @@ export function summarizeOperation(operation: DesignOperation): string {
     case DesignOperationKind.CircleOutline:
     case DesignOperationKind.CirclePocket:
       return `Ø ${mm(operation.diameterMm)} мм, ${depth}`;
+    case DesignOperationKind.Shape: {
+      const bounds = findPathsBounds(operation.paths);
+      const size = bounds ? `${mm(bounds.maxX - bounds.minX)} × ${mm(bounds.maxY - bounds.minY)} мм` : 'пусто';
+      return `${SHAPE_CUT_LABELS[operation.cut]}, ${size}, ${depth}`;
+    }
   }
 }

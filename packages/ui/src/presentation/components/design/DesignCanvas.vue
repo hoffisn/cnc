@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import {
+  DesignOperationKind,
   createOperationFromDrawing,
   dragOperationHandle,
   findZeroOnSheet,
@@ -10,9 +11,7 @@ import {
   translateOperation,
   type DesignIssue,
   type DesignOperation,
-  type DesignOperationKind,
   type OperationHandle,
-  type OperationHandleKind,
   type SheetPoint,
   type WorkSurface,
 } from '@rezets/core';
@@ -36,6 +35,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   selectOperation: [operationId: string | null];
   drawOperation: [kind: DesignOperationKind, start: SheetPoint, end: SheetPoint];
+  drawShape: [points: SheetPoint[], isClosed: boolean];
   updateOperation: [operation: DesignOperation];
 }>();
 
@@ -59,6 +59,10 @@ const MIN_GRID_CELL_PX = 24;
 const MIN_RULER_LABEL_SPACING_PX = 72;
 const ZERO_MARKER_LENGTH_PX = 34;
 const PRIMARY_BUTTON = 0;
+/** A click this close to the first point of a shape being drawn closes it. */
+const CLOSE_SHAPE_DISTANCE_PX = 14;
+const MIN_CLOSED_SHAPE_POINTS = 3;
+const MIN_OPEN_SHAPE_POINTS = 2;
 
 const svgElement = ref<SVGSVGElement | null>(null);
 const viewWidth = ref(0);
@@ -75,7 +79,10 @@ const panStartScreen = shallowRef({ x: 0, y: 0, panX: 0, panY: 0 });
 /** The operation as it looks mid-drag; the project changes only when the drag ends, as one undo step. */
 const previewOperation = shallowRef<DesignOperation | null>(null);
 let draggedOperation: DesignOperation | null = null;
-let draggedHandle: OperationHandleKind | null = null;
+let draggedHandle: OperationHandle | null = null;
+/** Points of a shape being drawn click by click. */
+const draftPoints = shallowRef<readonly SheetPoint[]>([]);
+const isDrawingShape = computed(() => props.activeTool === DesignOperationKind.Shape && !props.isReadOnly);
 
 /** Screen positions of the fingers or pointers currently down, by pointer. */
 const activePointers = new Map<number, { x: number; y: number }>();
@@ -116,7 +123,36 @@ function fitToView(): void {
   panY.value = (viewHeight.value + (minY + maxY) * scale.value) / 2;
 }
 
-defineExpose({ fitToView });
+/** Ends the shape being drawn; it needs enough points to be a line or an area. */
+function finishShape(isClosed: boolean): void {
+  const points = draftPoints.value.filter(
+    (point, index, all) => index === 0 || point.x !== all[index - 1]?.x || point.y !== all[index - 1]?.y,
+  );
+  draftPoints.value = [];
+  if (points.length >= (isClosed ? MIN_CLOSED_SHAPE_POINTS : MIN_OPEN_SHAPE_POINTS)) emit('drawShape', points, isClosed);
+}
+
+function cancelShape(): void {
+  draftPoints.value = [];
+}
+
+watch(() => props.activeTool, cancelShape);
+
+const canCloseShape = computed(() => draftPoints.value.length >= MIN_CLOSED_SHAPE_POINTS);
+
+/** The line through the placed points and on to the pointer, in screen coordinates. */
+const draftPolyline = computed(() => {
+  const points = cursor.value ? [...draftPoints.value, snapPoint(cursor.value)] : draftPoints.value;
+  return points.map((point) => `${toScreenX(point.x)},${toScreenY(point.y)}`).join(' ');
+});
+
+function isNearFirstDraftPoint(point: SheetPoint): boolean {
+  const [first] = draftPoints.value;
+  if (!first || !canCloseShape.value) return false;
+  return Math.hypot(toScreenX(point.x) - toScreenX(first.x), toScreenY(point.y) - toScreenY(first.y)) <= CLOSE_SHAPE_DISTANCE_PX;
+}
+
+defineExpose({ fitToView, finishShape, cancelShape });
 
 const resizeObserver = new ResizeObserver(([entry]) => {
   if (!entry) return;
@@ -267,6 +303,12 @@ function beginGesture(kind: CanvasGesture, event: PointerEvent): void {
 }
 
 function handleCanvasPointerDown(event: PointerEvent): void {
+  if (event.button === PRIMARY_BUTTON && isDrawingShape.value) {
+    const point = snapPoint(toSheetPoint(event));
+    if (isNearFirstDraftPoint(point)) finishShape(true);
+    else draftPoints.value = [...draftPoints.value, point];
+    return;
+  }
   if (event.button === PRIMARY_BUTTON && props.activeTool && !props.isReadOnly) {
     const start = snapPoint(toSheetPoint(event));
     gestureStart.value = start;
@@ -291,7 +333,7 @@ function handleShapePointerDown(operation: DesignOperation, event: PointerEvent)
 function handleHandlePointerDown(handle: OperationHandle, event: PointerEvent): void {
   event.stopPropagation();
   draggedOperation = props.operations.find((operation) => operation.id === props.selectedOperationId) ?? null;
-  draggedHandle = handle.kind;
+  draggedHandle = handle;
   beginGesture(CanvasGesture.DraggingHandle, event);
 }
 
@@ -423,7 +465,23 @@ function handleWheel(event: WheelEvent): void {
         <text x="-4" :y="-ZERO_MARKER_LENGTH_PX - 4" class="canvas__zero-y-label">Y</text>
       </g>
 
-      <g v-for="handle in selectedHandles" :key="handle.kind" @pointerdown="handleHandlePointerDown(handle, $event)">
+      <g v-if="draftPoints.length > 0" class="canvas__draft" data-testid="shape-draft">
+        <polyline :points="draftPolyline" />
+        <circle
+          v-for="(point, index) in draftPoints"
+          :key="`draft-${index}`"
+          :class="{ 'canvas__draft-first': index === 0 && canCloseShape }"
+          :cx="toScreenX(point.x)"
+          :cy="toScreenY(point.y)"
+          :r="index === 0 && canCloseShape ? 7 : 4"
+        />
+      </g>
+
+      <g
+        v-for="handle in selectedHandles"
+        :key="`${handle.kind}-${handle.vertex?.pathIndex ?? 0}-${handle.vertex?.pointIndex ?? 0}`"
+        @pointerdown="handleHandlePointerDown(handle, $event)"
+      >
         <!-- A fingertip is much larger than the visible point. -->
         <circle class="canvas__handle-target" :cx="toScreenX(handle.point.x)" :cy="toScreenY(handle.point.y)" r="20" />
         <circle
@@ -435,6 +493,13 @@ function handleWheel(event: WheelEvent): void {
         />
       </g>
     </svg>
+
+    <div v-if="isDrawingShape" class="canvas__shape-bar" data-testid="shape-bar" @pointerdown.stop>
+      <span>{{ draftPoints.length === 0 ? 'Ставьте точки кликом по листу' : `Точек: ${draftPoints.length}` }}</span>
+      <button type="button" :disabled="!canCloseShape" data-testid="shape-close" @click="finishShape(true)">Замкнуть</button>
+      <button type="button" :disabled="draftPoints.length < 2" data-testid="shape-finish" @click="finishShape(false)">Линия</button>
+      <button type="button" :disabled="draftPoints.length === 0" @click="cancelShape">Сбросить</button>
+    </div>
 
     <div class="canvas__legend numeric">
       <span>Лист {{ formatCoordinate(surface.sheetWidthMm) }} × {{ formatCoordinate(surface.sheetDepthMm) }} мм</span>
@@ -452,6 +517,57 @@ function handleWheel(event: WheelEvent): void {
   overflow: hidden;
   border-radius: var(--radius-large);
   background: #e6e8ec;
+}
+
+.canvas__draft polyline {
+  fill: none;
+  stroke: #d99a00;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.canvas__draft circle {
+  fill: #fff;
+  stroke: #d99a00;
+  stroke-width: 2;
+}
+
+.canvas__draft .canvas__draft-first {
+  fill: #ffdd2d;
+}
+
+.canvas__shape-bar {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: 0 auto;
+  padding: 6px 6px 6px 14px;
+  border-radius: var(--radius-medium);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-floating);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.canvas__shape-bar button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  font-weight: 550;
+}
+
+.canvas__shape-bar button:disabled {
+  opacity: 0.45;
 }
 
 .canvas__svg {

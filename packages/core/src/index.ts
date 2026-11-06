@@ -88,9 +88,12 @@ export {
   DEFAULT_HOLDING_TABS,
   DesignOperationKind,
   NO_HOLDING_TABS,
+  ShapeCut,
   ToolSide,
   type CircleOutlineOperation,
   type HoldingTabs,
+  type SheetPath,
+  type ShapeOperation,
   type CirclePocketOperation,
   type DesignOperation,
   type HoleGridOperation,
@@ -101,13 +104,17 @@ export {
   type SlotOperation,
 } from '@core/domain/design/designOperation';
 export {
+  MAX_EDITABLE_VERTICES,
   OperationHandleKind,
   computeCutFootprint,
   createOperationFromDrawing,
+  createShapeFromPoints,
+  scaleShapePaths,
   dragOperationHandle,
   listOperationHandles,
   translateOperation,
   type OperationHandle,
+  type ShapeDrawing,
   type SheetRectangle,
 } from '@core/domain/design/operationGeometry';
 export { EMPTY_DESIGN_PROJECT, parseDesignProject, type DesignProject } from '@core/domain/design/designProject';
@@ -122,6 +129,14 @@ export {
   type CuttingToolPreset,
 } from '@core/domain/design/cuttingLibrary';
 export { areHoldingTabsActive, locateOperationTabs } from '@core/domain/design/designContours';
+export {
+  findPathsBounds,
+  flattenSheetPath,
+  planShapeEngraving,
+  planShapeOutline,
+  planShapePocket,
+  type ToolLine,
+} from '@core/domain/design/shapeGeometry';
 
 // Application: ports
 export type { Clock } from '@core/application/ports/clock';

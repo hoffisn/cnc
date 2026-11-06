@@ -1,9 +1,11 @@
 import {
   DesignOperationKind,
   NO_HOLDING_TABS,
+  ShapeCut,
   ToolSide,
   type DesignOperation,
   type HoldingTabs,
+  type SheetPath,
   type SheetPoint,
 } from './designOperation';
 import { CUTTING_TOOL_PRESETS, StockMaterial } from './cuttingLibrary';
@@ -52,6 +54,20 @@ function readPoint(value: unknown): SheetPoint | null {
   return { x: value.x, y: value.y };
 }
 
+/** Reads the paths of a shape; a single damaged point discards the shape, as its form would be wrong. */
+function readPaths(value: unknown): SheetPath[] | null {
+  if (!Array.isArray(value)) return null;
+  const paths: SheetPath[] = [];
+  for (const stored of value) {
+    if (!isRecord(stored) || !Array.isArray(stored.points)) return null;
+    if (typeof stored.isClosed !== 'boolean' || typeof stored.isSmooth !== 'boolean') return null;
+    const points = stored.points.map(readPoint);
+    if (points.some((point) => point === null)) return null;
+    paths.push({ points: points as SheetPoint[], isClosed: stored.isClosed, isSmooth: stored.isSmooth });
+  }
+  return paths;
+}
+
 /** Reads holding tabs; projects saved before tabs existed have none. */
 function readTabs(value: unknown): HoldingTabs | null {
   if (value === undefined) return NO_HOLDING_TABS;
@@ -98,6 +114,12 @@ function parseOperation(stored: unknown): DesignOperation | null {
       return hasRectangle ? { kind, id, depthMm, corner, widthMm, heightMm } : null;
     case DesignOperationKind.CirclePocket:
       return hasCircle ? { kind, id, depthMm, center, diameterMm } : null;
+    case DesignOperationKind.Shape: {
+      const paths = readPaths(stored.paths);
+      const { cut } = stored;
+      if (!paths || !isEnumValue<ShapeCut>(ShapeCut, cut) || !hasToolSide || !tabs) return null;
+      return { kind, id, depthMm, paths, cut, toolSide, tabs };
+    }
     default:
       return null;
   }

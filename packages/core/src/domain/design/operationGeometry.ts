@@ -1,10 +1,14 @@
 import {
   DEFAULT_HOLDING_TABS,
   DesignOperationKind,
+  ShapeCut,
   ToolSide,
   type DesignOperation,
+  type SheetPath,
   type SheetPoint,
+  type ShapeOperation,
 } from './designOperation';
+import { findPathsBounds, measureShapeCutMargin } from './shapeGeometry';
 
 /** Axis-aligned rectangle on the sheet. */
 export interface SheetRectangle {
@@ -24,13 +28,20 @@ export enum OperationHandleKind {
   CornerUpperRight = 'corner-upper-right',
   Radius = 'radius',
   GridExtent = 'grid-extent',
+  /** A point of a freely drawn shape. */
+  Vertex = 'vertex',
 }
 
 /** A handle and where it currently is. */
 export interface OperationHandle {
   readonly kind: OperationHandleKind;
   readonly point: SheetPoint;
+  /** Which point of which path a vertex handle moves. */
+  readonly vertex?: { readonly pathIndex: number; readonly pointIndex: number };
 }
+
+/** Shapes with more points, such as imported drawings, are changed as a whole rather than point by point. */
+export const MAX_EDITABLE_VERTICES = 64;
 
 /** Size of a shape placed by a click instead of a drag, relative to the tool. */
 const CLICK_SHAPE_SIZE_IN_TOOL_DIAMETERS = 8;
@@ -43,6 +54,17 @@ const offsetPoint = (point: SheetPoint, deltaX: number, deltaY: number): SheetPo
   x: point.x + deltaX,
   y: point.y + deltaY,
 });
+
+const mapShapePoints = (paths: readonly SheetPath[], transform: (point: SheetPoint) => SheetPoint): SheetPath[] =>
+  paths.map((path) => ({ ...path, points: path.points.map(transform) }));
+
+/** Scales a shape's paths about a fixed point, keeping their proportions. */
+export function scaleShapePaths(paths: readonly SheetPath[], factor: number, anchor: SheetPoint): SheetPath[] {
+  return mapShapePoints(paths, (point) => ({
+    x: anchor.x + (point.x - anchor.x) * factor,
+    y: anchor.y + (point.y - anchor.y) * factor,
+  }));
+}
 
 /** Returns a copy of an operation shifted across the sheet. */
 export function translateOperation<TOperation extends DesignOperation>(
@@ -67,6 +89,8 @@ export function translateOperation(operation: DesignOperation, deltaX: number, d
     case DesignOperationKind.RectangleOutline:
     case DesignOperationKind.RectanglePocket:
       return { ...operation, corner: offsetPoint(operation.corner, deltaX, deltaY) };
+    case DesignOperationKind.Shape:
+      return { ...operation, paths: mapShapePoints(operation.paths, (point) => offsetPoint(point, deltaX, deltaY)) };
   }
 }
 
@@ -146,6 +170,10 @@ export function computeCutFootprint(operation: DesignOperation, toolDiameter: nu
       };
     case DesignOperationKind.CirclePocket:
       return rectangleAround(operation.center, operation.diameterMm / 2);
+    case DesignOperationKind.Shape: {
+      const bounds = findPathsBounds(operation.paths) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+      return expandRectangle(bounds, measureShapeCutMargin(operation, toolDiameter));
+    }
   }
 }
 
@@ -189,6 +217,13 @@ export function listOperationHandles(operation: DesignOperation): OperationHandl
           point: { x: operation.center.x + operation.diameterMm / 2, y: operation.center.y },
         },
       ];
+    case DesignOperationKind.Shape: {
+      const vertexCount = operation.paths.reduce((total, path) => total + path.points.length, 0);
+      if (vertexCount > MAX_EDITABLE_VERTICES) return [];
+      return operation.paths.flatMap((path, pathIndex) =>
+        path.points.map((point, pointIndex) => ({ kind: OperationHandleKind.Vertex, point, vertex: { pathIndex, pointIndex } })),
+      );
+    }
   }
 }
 
@@ -222,14 +257,11 @@ function findOppositeCorner(
 /** Returns a copy of an operation with one of its handles moved to a new point. */
 export function dragOperationHandle<TOperation extends DesignOperation>(
   operation: TOperation,
-  handle: OperationHandleKind,
+  handle: OperationHandle,
   point: SheetPoint,
 ): TOperation;
-export function dragOperationHandle(
-  operation: DesignOperation,
-  handle: OperationHandleKind,
-  point: SheetPoint,
-): DesignOperation {
+export function dragOperationHandle(operation: DesignOperation, draggedHandle: OperationHandle, point: SheetPoint): DesignOperation {
+  const handle = draggedHandle.kind;
   switch (operation.kind) {
     case DesignOperationKind.Hole:
       return operation;
@@ -253,6 +285,18 @@ export function dragOperationHandle(
     case DesignOperationKind.CircleOutline:
     case DesignOperationKind.CirclePocket:
       return { ...operation, diameterMm: distanceBetweenPoints(operation.center, point) * 2 };
+    case DesignOperationKind.Shape: {
+      const { vertex } = draggedHandle;
+      if (!vertex) return operation;
+      return {
+        ...operation,
+        paths: operation.paths.map((path, pathIndex) =>
+          pathIndex === vertex.pathIndex
+            ? { ...path, points: path.points.map((existing, pointIndex) => (pointIndex === vertex.pointIndex ? point : existing)) }
+            : path,
+        ),
+      };
+    }
   }
 }
 
@@ -306,5 +350,35 @@ export function createOperationFromDrawing(drawing: OperationDrawing): DesignOpe
       return { kind, id, depthMm, ...rectangle };
     case DesignOperationKind.CirclePocket:
       return { kind, id, depthMm, center: start, diameterMm };
+    case DesignOperationKind.Shape: {
+      const { corner, widthMm, heightMm } = rectangle;
+      return createShapeFromPoints({
+        id,
+        depthMm,
+        isClosed: true,
+        points: [corner, { x: corner.x + widthMm, y: corner.y }, { x: corner.x + widthMm, y: corner.y + heightMm }, { x: corner.x, y: corner.y + heightMm }],
+      });
+    }
   }
+}
+
+/** Parameters of a shape drawn point by point. */
+export interface ShapeDrawing {
+  readonly id: string;
+  readonly points: readonly SheetPoint[];
+  readonly isClosed: boolean;
+  readonly depthMm: number;
+}
+
+/** Creates a shape from clicked points: a closed one is cut out along its outline, an open one engraved. */
+export function createShapeFromPoints(drawing: ShapeDrawing): ShapeOperation {
+  return {
+    kind: DesignOperationKind.Shape,
+    id: drawing.id,
+    depthMm: drawing.depthMm,
+    paths: [{ points: drawing.points, isClosed: drawing.isClosed, isSmooth: false }],
+    cut: drawing.isClosed ? ShapeCut.Outline : ShapeCut.Engrave,
+    toolSide: ToolSide.Outside,
+    tabs: DEFAULT_HOLDING_TABS,
+  };
 }

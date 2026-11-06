@@ -9,5 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "clipper2-ts": "2.0.1"
   }
 }

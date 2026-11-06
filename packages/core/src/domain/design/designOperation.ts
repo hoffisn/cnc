@@ -13,6 +13,7 @@ export enum DesignOperationKind {
   CircleOutline = 'circle-outline',
   RectanglePocket = 'rectangle-pocket',
   CirclePocket = 'circle-pocket',
+  Shape = 'shape',
 }
 
 /** Which side of a drawn outline the tool runs on. */
@@ -23,6 +24,25 @@ export enum ToolSide {
   Outside = 'outside',
   /** The material inside the line is removed, as when cutting an opening. */
   Inside = 'inside',
+}
+
+/** Line on the sheet through a list of points. */
+export interface SheetPath {
+  readonly points: readonly SheetPoint[];
+  /** The last point connects back to the first. */
+  readonly isClosed: boolean;
+  /** A smooth curve passes through the points instead of straight segments between them. */
+  readonly isSmooth: boolean;
+}
+
+/** What is done with a freely drawn or imported shape. */
+export enum ShapeCut {
+  /** Cut along the edge, as with the outlines of a rectangle or a circle. */
+  Outline = 'outline',
+  /** Remove all material inside the shape. */
+  Pocket = 'pocket',
+  /** Follow the lines themselves, as when engraving a drawing. */
+  Engrave = 'engrave',
 }
 
 /**
@@ -110,6 +130,19 @@ export interface CirclePocketOperation extends OperationBase {
   readonly diameterMm: number;
 }
 
+/**
+ * Shape of any form: drawn point by point or imported from a drawing.
+ * Closed paths bound areas; a path inside another one makes a hole in it.
+ */
+export interface ShapeOperation extends OperationBase {
+  readonly kind: DesignOperationKind.Shape;
+  readonly paths: readonly SheetPath[];
+  readonly cut: ShapeCut;
+  /** Side of the edge the tool runs on when the shape is cut out along its outline. */
+  readonly toolSide: ToolSide;
+  readonly tabs: HoldingTabs;
+}
+
 /** One thing an engineer asks the machine to do to the sheet. */
 export type DesignOperation =
   | HoleOperation
@@ -118,4 +151,5 @@ export type DesignOperation =
   | RectangleOutlineOperation
   | CircleOutlineOperation
   | RectanglePocketOperation
-  | CirclePocketOperation;
+  | CirclePocketOperation
+  | ShapeOperation;
