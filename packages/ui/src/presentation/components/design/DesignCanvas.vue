@@ -6,6 +6,7 @@ import {
   findZeroOnSheet,
   formatCoordinate,
   listOperationHandles,
+  locateOperationTabs,
   translateOperation,
   type DesignIssue,
   type DesignOperation,
@@ -410,6 +411,7 @@ function handleWheel(event: WheelEvent): void {
         :to-screen-y="toScreenY"
         :is-selected="operation.id === selectedOperationId"
         :has-issue="operationsWithIssues.has(operation.id)"
+        :tab-centers="locateOperationTabs(operation, surface)"
         @pointerdown="handleShapePointerDown(operation, $event)"
       />
 

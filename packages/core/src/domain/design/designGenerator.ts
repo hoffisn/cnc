@@ -1,7 +1,18 @@
 import { formatCoordinate } from '@core/domain/gcode/generator';
 import {
+  areHoldingTabsActive,
+  createCircleContour,
+  createOutlineContour,
+  createRectangleContour,
+  measureContour,
+  placeTabGaps,
+  splitContourAtTabs,
+  type Contour,
+  type ContourPiece,
+  type ContourStep,
+} from './designContours';
+import {
   DesignOperationKind,
-  ToolSide,
   type CircleOutlineOperation,
   type CirclePocketOperation,
   type DesignOperation,
@@ -17,65 +28,12 @@ import { findZeroOnSheet, type WorkSurface } from './workSurface';
 /** Distance between neighboring pocket passes, relative to the tool: leaves no ridges between them. */
 const POCKET_STEP_OVER_IN_TOOL_DIAMETERS = 0.6;
 
-/**
- * Part of a closed cut.
- * Outside cuts run clockwise and inside cuts counter-clockwise: both are climb milling,
- * which gives a cleaner edge on the part with a regular right-hand spindle.
- */
-type ContourStep =
-  | { readonly isArc: false; readonly end: SheetPoint }
-  | { readonly isArc: true; readonly end: SheetPoint; readonly center: SheetPoint; readonly isClockwise: boolean };
-
-/** Closed tool path along an outline. */
-interface Contour {
-  readonly start: SheetPoint;
-  readonly steps: readonly ContourStep[];
-}
-
 /** Lists the cutting depths from the first pass to the final depth, as negative Z values. */
 function listPassHeights(depthMm: number, depthPerPassMm: number): number[] {
   const passCount = Math.max(Math.ceil(depthMm / depthPerPassMm - 1e-9), 1);
   return Array.from({ length: passCount }, (_, passIndex) =>
     passIndex === passCount - 1 ? -depthMm : -(passIndex + 1) * depthPerPassMm,
   );
-}
-
-const lineTo = (x: number, y: number): ContourStep => ({ isArc: false, end: { x, y } });
-
-/** Plain rectangle starting at its lower left corner, counter-clockwise. */
-function createRectangleContour(minX: number, minY: number, maxX: number, maxY: number): Contour {
-  return {
-    start: { x: minX, y: minY },
-    steps: [lineTo(maxX, minY), lineTo(maxX, maxY), lineTo(minX, maxY), lineTo(minX, minY)],
-  };
-}
-
-/** Clockwise path around a rectangle at a distance, with rounded corners that keep the part's corners sharp. */
-function createOutsetRectangleContour(minX: number, minY: number, maxX: number, maxY: number, offset: number): Contour {
-  const arc = (endX: number, endY: number, centerX: number, centerY: number): ContourStep => ({
-    isArc: true,
-    end: { x: endX, y: endY },
-    center: { x: centerX, y: centerY },
-    isClockwise: true,
-  });
-  return {
-    start: { x: minX - offset, y: minY },
-    steps: [
-      lineTo(minX - offset, maxY),
-      arc(minX, maxY + offset, minX, maxY),
-      lineTo(maxX, maxY + offset),
-      arc(maxX + offset, maxY, maxX, maxY),
-      lineTo(maxX + offset, minY),
-      arc(maxX, minY - offset, maxX, minY),
-      lineTo(minX, minY - offset),
-      arc(minX - offset, minY, minX, minY),
-    ],
-  };
-}
-
-function createCircleContour(center: SheetPoint, radius: number, isClockwise: boolean): Contour {
-  const start = { x: center.x + radius, y: center.y };
-  return { start, steps: [{ isArc: true, end: start, center, isClockwise }] };
 }
 
 /** Writes G-code with coordinates converted from the sheet to the chosen zero position. */
@@ -122,19 +80,21 @@ class DesignGCodeWriter {
 
   /** Follows a contour once, assuming the tool is at its start. */
   followContour(contour: Contour): void {
-    for (const step of contour.steps) {
-      if (step.isArc) {
-        const centerOffsetX = formatCoordinate(step.center.x - this.position.x);
-        const centerOffsetY = formatCoordinate(step.center.y - this.position.y);
-        this.lines.push(
-          `${step.isClockwise ? 'G2' : 'G3'} X${this.programX(step.end.x)} Y${this.programY(step.end.y)} ` +
-            `I${centerOffsetX} J${centerOffsetY}${this.feedWord(this.surface.feedRate)}`,
-        );
-        this.position = step.end;
-      } else {
-        this.cutTo(step.end);
-      }
+    for (const step of contour.steps) this.followStep(step);
+  }
+
+  followStep(step: ContourStep): void {
+    if (!step.isArc) {
+      this.cutTo(step.end);
+      return;
     }
+    const centerOffsetX = formatCoordinate(step.center.x - this.position.x);
+    const centerOffsetY = formatCoordinate(step.center.y - this.position.y);
+    this.lines.push(
+      `${step.isClockwise ? 'G2' : 'G3'} X${this.programX(step.end.x)} Y${this.programY(step.end.y)} ` +
+        `I${centerOffsetX} J${centerOffsetY}${this.feedWord(this.surface.feedRate)}`,
+    );
+    this.position = step.end;
   }
 
   toText(): string {
@@ -179,10 +139,8 @@ class OperationGenerator {
         this.cutSlot(operation);
         break;
       case DesignOperationKind.RectangleOutline:
-        this.cutContourInPasses(this.createRectangleOutlineContour(operation), operation.depthMm);
-        break;
       case DesignOperationKind.CircleOutline:
-        this.cutContourInPasses(this.createCircleOutlineContour(operation), operation.depthMm);
+        this.cutOutline(operation);
         break;
       case DesignOperationKind.RectanglePocket:
         this.cutRectanglePocket(operation);
@@ -222,43 +180,41 @@ class OperationGenerator {
     this.writer.retract();
   }
 
-  private createRectangleOutlineContour(operation: RectangleOutlineOperation): Contour {
-    const minX = operation.corner.x;
-    const minY = operation.corner.y;
-    const maxX = minX + operation.widthMm;
-    const maxY = minY + operation.heightMm;
-    switch (operation.toolSide) {
-      case ToolSide.OnLine:
-        return createRectangleContour(minX, minY, maxX, maxY);
-      case ToolSide.Inside:
-        return createRectangleContour(
-          minX + this.toolRadius,
-          minY + this.toolRadius,
-          maxX - this.toolRadius,
-          maxY - this.toolRadius,
-        );
-      case ToolSide.Outside:
-        return createOutsetRectangleContour(minX, minY, maxX, maxY, this.toolRadius);
+  private cutOutline(operation: RectangleOutlineOperation | CircleOutlineOperation): void {
+    const contour = createOutlineContour(operation, this.toolRadius);
+    const { tabs, depthMm } = operation;
+    if (!areHoldingTabsActive(tabs, depthMm, this.surface)) {
+      this.cutContourInPasses(contour, depthMm);
+      return;
     }
+    const gaps = placeTabGaps(measureContour(contour), tabs, this.surface.toolDiameterMm);
+    this.cutContourInPasses(contour, depthMm, { pieces: splitContourAtTabs(contour, gaps), topZ: -depthMm + tabs.heightMm });
   }
 
-  private createCircleOutlineContour(operation: CircleOutlineOperation): Contour {
-    const radius = operation.diameterMm / 2;
-    switch (operation.toolSide) {
-      case ToolSide.OnLine:
-        return createCircleContour(operation.center, radius, false);
-      case ToolSide.Inside:
-        return createCircleContour(operation.center, radius - this.toolRadius, false);
-      case ToolSide.Outside:
-        return createCircleContour(operation.center, radius + this.toolRadius, true);
-    }
-  }
-
-  private cutContourInPasses(contour: Contour, depthMm: number): void {
+  /**
+   * Cuts a contour pass by pass. Passes below the top of the tabs lift over them,
+   * so the part stays attached by thin bridges once the sheet is cut through.
+   */
+  private cutContourInPasses(
+    contour: Contour,
+    depthMm: number,
+    tabs?: { readonly pieces: readonly ContourPiece[]; readonly topZ: number },
+  ): void {
     this.writer.rapidTo(contour.start);
     for (const height of listPassHeights(depthMm, this.surface.depthPerPassMm)) {
       this.writer.plungeTo(height);
-      this.writer.followContour(contour);
+      if (!tabs || height >= tabs.topZ) {
+        this.writer.followContour(contour);
+        continue;
+      }
+      let isLifted = false;
+      for (const piece of tabs.pieces) {
+        if (piece.isOnTab !== isLifted) {
+          this.writer.plungeTo(piece.isOnTab ? tabs.topZ : height);
+          isLifted = piece.isOnTab;
+        }
+        this.writer.followStep(piece.step);
+      }
     }
     this.writer.retract();
   }

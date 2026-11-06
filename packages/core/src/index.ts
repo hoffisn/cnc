@@ -85,9 +85,12 @@ export {
   type WorkSurface,
 } from '@core/domain/design/workSurface';
 export {
+  DEFAULT_HOLDING_TABS,
   DesignOperationKind,
+  NO_HOLDING_TABS,
   ToolSide,
   type CircleOutlineOperation,
+  type HoldingTabs,
   type CirclePocketOperation,
   type DesignOperation,
   type HoleGridOperation,
@@ -110,6 +113,7 @@ export {
 export { EMPTY_DESIGN_PROJECT, parseDesignProject, type DesignProject } from '@core/domain/design/designProject';
 export { DesignIssueCode, findDesignIssues, type DesignIssue } from '@core/domain/design/designRules';
 export { generateDesignGCode } from '@core/domain/design/designGenerator';
+export { areHoldingTabsActive, locateOperationTabs } from '@core/domain/design/designContours';
 
 // Application: ports
 export type { Clock } from '@core/application/ports/clock';

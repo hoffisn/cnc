@@ -14,7 +14,23 @@ const MM = 'мм';
 const PIECES = 'шт.';
 const MAX_GRID_COUNT = 100;
 
+const MAX_TAB_COUNT = 24;
+
 const clampGridCount = (value: number): number => Math.min(Math.max(Math.round(value), 1), MAX_GRID_COUNT);
+const clampTabCount = (value: number): number => Math.min(Math.max(Math.round(value), 0), MAX_TAB_COUNT);
+
+/** Describes the holding tab numbers of an outline; other operations have none. */
+export function describeTabFields(operation: DesignOperation): OperationField[] {
+  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline) {
+    return [];
+  }
+  const { tabs } = operation;
+  return [
+    { key: 'tab-count', label: 'Количество', suffix: PIECES, value: tabs.count, apply: (value) => ({ ...operation, tabs: { ...tabs, count: clampTabCount(value) } }) },
+    { key: 'tab-width', label: 'Длина', suffix: MM, value: tabs.widthMm, apply: (widthMm) => ({ ...operation, tabs: { ...tabs, widthMm } }) },
+    { key: 'tab-height', label: 'Толщина', suffix: MM, value: tabs.heightMm, apply: (heightMm) => ({ ...operation, tabs: { ...tabs, heightMm } }) },
+  ];
+}
 
 /** Describes the numbers an engineer can type for an operation, in display order. */
 export function describeOperationFields(operation: DesignOperation): OperationField[] {

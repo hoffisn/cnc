@@ -1,3 +1,4 @@
+import { areHoldingTabsActive, createOutlineContour, measureContour, placeTabGaps } from './designContours';
 import { DesignOperationKind, ToolSide, type DesignOperation } from './designOperation';
 import type { DesignProject } from './designProject';
 import { computeCutFootprint } from './operationGeometry';
@@ -13,6 +14,9 @@ export enum DesignIssueCode {
   ShapeSmallerThanTool = 'shape-smaller-than-tool',
   ShapeSizeNotPositive = 'shape-size-not-positive',
   GridCountNotPositive = 'grid-count-not-positive',
+  TabSizeNotPositive = 'tab-size-not-positive',
+  TabNotLowerThanCut = 'tab-not-lower-than-cut',
+  TabsDoNotFit = 'tabs-do-not-fit',
 }
 
 /** Problem found in a project. */
@@ -59,6 +63,21 @@ function checkShapeSize(operation: DesignOperation, toolDiameterMm: number): Des
   }
 }
 
+/** Checks holding tabs where they take effect, on outlines cut through the sheet. */
+function checkHoldingTabs(operation: DesignOperation, surface: WorkSurface): DesignIssueCode | null {
+  if (operation.kind !== DesignOperationKind.RectangleOutline && operation.kind !== DesignOperationKind.CircleOutline) {
+    return null;
+  }
+  const { tabs } = operation;
+  if (!areHoldingTabsActive(tabs, operation.depthMm, surface)) return null;
+  if (tabs.widthMm <= 0 || tabs.heightMm <= 0) return DesignIssueCode.TabSizeNotPositive;
+  if (tabs.heightMm >= operation.depthMm) return DesignIssueCode.TabNotLowerThanCut;
+  const contour = createOutlineContour(operation, surface.toolDiameterMm / 2);
+  return placeTabGaps(measureContour(contour), tabs, surface.toolDiameterMm).length === 0
+    ? DesignIssueCode.TabsDoNotFit
+    : null;
+}
+
 function isInsideSheet(operation: DesignOperation, surface: WorkSurface): boolean {
   const footprint = computeCutFootprint(operation, surface.toolDiameterMm);
   return (
@@ -81,6 +100,9 @@ function checkOperation(operation: DesignOperation, surface: WorkSurface): Desig
   const sizeIssue = checkShapeSize(operation, surface.toolDiameterMm);
   if (sizeIssue) report(sizeIssue);
   else if (!isInsideSheet(operation, surface)) report(DesignIssueCode.OperationOutsideSheet);
+
+  const tabIssue = sizeIssue ? null : checkHoldingTabs(operation, surface);
+  if (tabIssue) report(tabIssue);
 
   return issues;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { DesignOperationKind, ToolSide, type DesignOperation } from '@rezets/core';
+import { DesignOperationKind, ToolSide, type DesignOperation, type SheetPoint } from '@rezets/core';
 
 const props = defineProps<{
   operation: DesignOperation;
@@ -11,6 +11,8 @@ const props = defineProps<{
   toScreenY: (y: number) => number;
   isSelected: boolean;
   hasIssue: boolean;
+  /** Centers of the holding tabs on the tool path. */
+  tabCenters?: readonly SheetPoint[];
 }>();
 
 /** A hole must stay visible and clickable however far the drawing is zoomed out. */
@@ -19,6 +21,8 @@ const MIN_HOLE_RADIUS_PX = 3;
 const toolWidthPx = computed(() => props.toolDiameterMm * props.scale);
 const toolRadiusPx = computed(() => toolWidthPx.value / 2);
 const holeRadiusPx = computed(() => Math.max(toolRadiusPx.value, MIN_HOLE_RADIUS_PX));
+/** A tab spans the cut; its marker stays visible when zoomed out. */
+const tabMarkerSizePx = computed(() => Math.max(toolWidthPx.value * 1.4, 8));
 
 const toolPathOffsetPx = (toolSide: ToolSide): number => {
   switch (toolSide) {
@@ -129,6 +133,17 @@ const gridHoles = computed(() => {
 
     <rect v-else-if="operation.kind === DesignOperationKind.RectanglePocket && screenRectangle" class="shape__cut" v-bind="screenRectangle" />
     <circle v-else-if="operation.kind === DesignOperationKind.CirclePocket && screenCircle" class="shape__cut" v-bind="screenCircle" />
+
+    <rect
+      v-for="(tab, index) in tabCenters ?? []"
+      :key="`tab-${index}`"
+      class="shape__tab"
+      :x="toScreenX(tab.x) - tabMarkerSizePx / 2"
+      :y="toScreenY(tab.y) - tabMarkerSizePx / 2"
+      :width="tabMarkerSizePx"
+      :height="tabMarkerSizePx"
+      rx="2"
+    />
   </g>
 </template>
 
@@ -155,6 +170,12 @@ const gridHoles = computed(() => {
 .shape__kerf {
   fill: none;
   stroke: color-mix(in srgb, var(--shape-color) 24%, transparent);
+}
+
+.shape__tab {
+  fill: #fff;
+  stroke: var(--shape-color);
+  stroke-width: 1.5;
 }
 
 .shape__line {

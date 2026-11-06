@@ -1,4 +1,4 @@
-import { DesignOperationKind, ToolSide, type DesignOperation, type WorkSurface } from '@rezets/core';
+import { DEFAULT_HOLDING_TABS, DesignOperationKind, ToolSide, type DesignOperation, type WorkSurface } from '@rezets/core';
 
 /** Margin between the part and the sheet's edge, relative to the sheet's smaller side. */
 const PART_MARGIN_RATIO = 0.1;
@@ -57,6 +57,7 @@ export function createExampleOperations(surface: WorkSurface, generateId: () => 
       widthMm: partWidth,
       heightMm: partHeight,
       toolSide: ToolSide.Outside,
+      tabs: DEFAULT_HOLDING_TABS,
     },
   ];
 }

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Copy, Trash2 } from '@lucide/vue';
-import { DesignOperationKind, ToolSide, type DesignOperation } from '@rezets/core';
+import { DesignOperationKind, ToolSide, areHoldingTabsActive, type DesignOperation } from '@rezets/core';
 import { useAppContext } from '@ui/presentation/appContext';
 import { DESIGN_ISSUE_MESSAGES, OPERATION_KIND_LABELS, TOOL_SIDE_LABELS } from '@ui/presentation/designMessages';
-import { describeOperationFields } from '@ui/presentation/operationFields';
+import { describeOperationFields, describeTabFields } from '@ui/presentation/operationFields';
 import NumberField from '@ui/presentation/components/ui/NumberField.vue';
 import SegmentedControl from '@ui/presentation/components/ui/SegmentedControl.vue';
 import UiButton from '@ui/presentation/components/ui/UiButton.vue';
@@ -16,6 +16,12 @@ const { designer } = useAppContext();
 const TOOL_SIDE_OPTIONS = Object.values(ToolSide).map((side) => ({ value: side, label: TOOL_SIDE_LABELS[side] }));
 
 const fields = computed(() => describeOperationFields(props.operation));
+const tabFields = computed(() => describeTabFields(props.operation));
+const surface = computed(() => designer.project.value.surface);
+const areTabsLeft = computed(() => {
+  const { operation } = props;
+  return 'tabs' in operation && areHoldingTabsActive(operation.tabs, operation.depthMm, surface.value);
+});
 const issues = computed(() => designer.issues.value.filter((issue) => issue.operationId === props.operation.id));
 
 const toolSide = computed(() => {
@@ -54,6 +60,28 @@ function setToolSide(value: ToolSide): void {
       <SegmentedControl :model-value="toolSide" :options="TOOL_SIDE_OPTIONS" data-testid="tool-side" @update:model-value="setToolSide" />
       <p class="properties__hint">«Снаружи» сохраняет размер детали, «Внутри» — размер отверстия.</p>
     </div>
+
+    <section v-if="tabFields.length > 0" class="properties__group" data-testid="holding-tabs">
+      <span class="properties__label">Перемычки</span>
+      <div class="properties__fields">
+        <NumberField
+          v-for="field in tabFields"
+          :key="`${operation.id}-${field.key}`"
+          :label="field.label"
+          :suffix="field.suffix"
+          :model-value="field.value"
+          :data-testid="`field-${field.key}`"
+          @update:model-value="designer.updateOperation(field.apply($event))"
+        />
+      </div>
+      <p class="properties__hint">
+        {{
+          areTabsLeft
+            ? 'Деталь останется на перемычках, чтобы фреза её не сорвала. Потом их срезают ножом.'
+            : 'Перемычки оставляются, только когда контур прорезает лист насквозь.'
+        }}
+      </p>
+    </section>
 
     <ul v-if="issues.length > 0" class="properties__issues" data-testid="operation-issues">
       <li v-for="issue in issues" :key="issue.code">{{ DESIGN_ISSUE_MESSAGES[issue.code] }}</li>
@@ -95,14 +123,31 @@ function setToolSide(value: ToolSide): void {
   gap: 12px;
 }
 
+.properties__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .properties__side {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+/* Options share the panel's width, so all three stay visible in a narrow side panel. */
 .properties__side :deep(.segmented) {
-  display: flex;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+
+.properties__side :deep(.segmented__option) {
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .properties__label {

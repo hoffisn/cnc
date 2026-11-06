@@ -49,6 +49,9 @@ export const DESIGN_ISSUE_MESSAGES: Readonly<Record<DesignIssueCode, string>> = 
   [DesignIssueCode.ShapeSmallerThanTool]: 'Фигура меньше диаметра фрезы',
   [DesignIssueCode.ShapeSizeNotPositive]: 'Размер фигуры должен быть больше нуля',
   [DesignIssueCode.GridCountNotPositive]: 'В ряду должно быть хотя бы одно отверстие',
+  [DesignIssueCode.TabSizeNotPositive]: 'Размер перемычки должен быть больше нуля',
+  [DesignIssueCode.TabNotLowerThanCut]: 'Перемычка должна быть тоньше глубины реза',
+  [DesignIssueCode.TabsDoNotFit]: 'Перемычки не помещаются на контуре: уменьшите их число или длину',
 };
 
 const mm = formatCoordinate;

@@ -21,11 +21,11 @@ const VIEW_OPTIONS = [
   { value: DesignerView.Preview, label: '3D' },
 ];
 const SNAP_OPTIONS = [
-  { value: 0, label: 'Без привязки' },
-  { value: 1, label: 'Шаг 1 мм' },
-  { value: 5, label: 'Шаг 5 мм' },
-  { value: 10, label: 'Шаг 10 мм' },
-  { value: 50, label: 'Шаг 50 мм' },
+  { value: 0, label: 'Свободно' },
+  { value: 1, label: 'Сетка 1 мм' },
+  { value: 5, label: 'Сетка 5 мм' },
+  { value: 10, label: 'Сетка 10 мм' },
+  { value: 50, label: 'Сетка 50 мм' },
 ];
 const TOOLS = Object.values(DesignOperationKind);
 
@@ -232,7 +232,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
 
 @media (max-width: 1360px) {
   .designer {
-    grid-template-columns: 232px minmax(0, 1fr) 240px;
+    grid-template-columns: 220px minmax(0, 1fr) 264px;
   }
 
 }
@@ -424,12 +424,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
   padding: 8px;
   border-radius: var(--radius-medium);
 }
 
 .designer__snap {
+  min-width: 96px;
   height: 38px;
   padding: 0 8px;
   border: 0;

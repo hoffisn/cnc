@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateDesignGCode } from '@core/domain/design/designGenerator';
-import { DesignOperationKind, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
+import { DesignOperationKind, NO_HOLDING_TABS, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
 import { EMPTY_DESIGN_PROJECT, type DesignProject } from '@core/domain/design/designProject';
 import { DEFAULT_WORK_SURFACE, ZeroOrigin, type WorkSurface } from '@core/domain/design/workSurface';
 import { parseGCode } from '@core/domain/gcode/parser';
@@ -28,6 +28,7 @@ const rectangleOutline = (toolSide: ToolSide): DesignOperation => ({
   widthMm: 200,
   heightMm: 100,
   toolSide,
+  tabs: NO_HOLDING_TABS,
 });
 
 describe('generateDesignGCode', () => {
@@ -39,12 +40,24 @@ describe('generateDesignGCode', () => {
       rectangleOutline(ToolSide.Outside),
       rectangleOutline(ToolSide.Inside),
       rectangleOutline(ToolSide.OnLine),
-      { kind: DesignOperationKind.CircleOutline, id: 'd', depthMm: 6, center: { x: 500, y: 300 }, diameterMm: 80, toolSide: ToolSide.Outside },
-      { kind: DesignOperationKind.CircleOutline, id: 'e', depthMm: 6, center: { x: 700, y: 300 }, diameterMm: 80, toolSide: ToolSide.Inside },
+      { kind: DesignOperationKind.CircleOutline, id: 'd', depthMm: 6, center: { x: 500, y: 300 }, diameterMm: 80, toolSide: ToolSide.Outside, tabs: NO_HOLDING_TABS },
+      { kind: DesignOperationKind.CircleOutline, id: 'e', depthMm: 6, center: { x: 700, y: 300 }, diameterMm: 80, toolSide: ToolSide.Inside, tabs: NO_HOLDING_TABS },
       { kind: DesignOperationKind.RectanglePocket, id: 'f', depthMm: 6, corner: { x: 500, y: 50 }, widthMm: 100, heightMm: 50 },
       { kind: DesignOperationKind.CirclePocket, id: 'g', depthMm: 6, center: { x: 800, y: 100 }, diameterMm: 60 },
     ];
     expect(cut(project(everyKind)).program.diagnostics).toEqual([]);
+  });
+
+  it('lifts over holding tabs only on the passes of a cut through the sheet', () => {
+    const tabs = { count: 4, widthMm: 8, heightMm: 2 };
+    const through = { ...rectangleOutline(ToolSide.Outside), depthMm: 18, tabs };
+    const { text, program } = cut(project([through]));
+    expect(program.diagnostics).toEqual([]);
+    expect(text.split('\n').filter((line) => line.startsWith('G1 Z-16 '))).toHaveLength(4);
+    expect(text.split('\n').filter((line) => line.startsWith('G1 Z-18'))).toHaveLength(5);
+
+    const shallow = cut(project([{ ...through, depthMm: 12 }])).text;
+    expect(shallow).not.toContain('Z-10 ');
   });
 
   it('starts with the spindle on at a safe height and ends with it off at zero', () => {
@@ -94,7 +107,7 @@ describe('generateDesignGCode', () => {
   });
 
   it('offsets circles by the tool radius', () => {
-    const circle = (toolSide: ToolSide): DesignOperation => ({ kind: DesignOperationKind.CircleOutline, id: 'a', depthMm: 3, center: { x: 100, y: 100 }, diameterMm: 80, toolSide });
+    const circle = (toolSide: ToolSide): DesignOperation => ({ kind: DesignOperationKind.CircleOutline, id: 'a', depthMm: 3, center: { x: 100, y: 100 }, diameterMm: 80, toolSide, tabs: NO_HOLDING_TABS });
     expect(cut(project([circle(ToolSide.Outside)])).path.partBounds?.max.x).toBeCloseTo(140 + TOOL_RADIUS, 6);
     expect(cut(project([circle(ToolSide.Inside)])).path.partBounds?.max.x).toBeCloseTo(140 - TOOL_RADIUS, 6);
   });

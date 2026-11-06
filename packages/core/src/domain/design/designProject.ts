@@ -1,4 +1,11 @@
-import { DesignOperationKind, ToolSide, type DesignOperation, type SheetPoint } from './designOperation';
+import {
+  DesignOperationKind,
+  NO_HOLDING_TABS,
+  ToolSide,
+  type DesignOperation,
+  type HoldingTabs,
+  type SheetPoint,
+} from './designOperation';
 import { DEFAULT_WORK_SURFACE, LengthUnit, ZeroOrigin, type WorkSurface } from './workSurface';
 
 /** Current schema of persisted projects. */
@@ -44,6 +51,15 @@ function readPoint(value: unknown): SheetPoint | null {
   return { x: value.x, y: value.y };
 }
 
+/** Reads holding tabs; projects saved before tabs existed have none. */
+function readTabs(value: unknown): HoldingTabs | null {
+  if (value === undefined) return NO_HOLDING_TABS;
+  if (!isRecord(value)) return null;
+  const { count, widthMm, heightMm } = value;
+  if (!Number.isInteger(count) || !isFiniteNumber(widthMm) || !isFiniteNumber(heightMm)) return null;
+  return { count: count as number, widthMm, heightMm };
+}
+
 /** Reads one stored operation. Geometry validity is checked later by the design rules, as for any edit. */
 function parseOperation(stored: unknown): DesignOperation | null {
   if (!isRecord(stored)) return null;
@@ -56,6 +72,7 @@ function parseOperation(stored: unknown): DesignOperation | null {
   const hasRectangle = corner !== null && isFiniteNumber(widthMm) && isFiniteNumber(heightMm);
   const hasCircle = center !== null && isFiniteNumber(diameterMm);
   const hasToolSide = isEnumValue<ToolSide>(ToolSide, toolSide);
+  const tabs = readTabs(stored.tabs);
 
   switch (kind) {
     case DesignOperationKind.Hole:
@@ -73,9 +90,9 @@ function parseOperation(stored: unknown): DesignOperation | null {
       return start && end && { kind, id, depthMm, start, end };
     }
     case DesignOperationKind.RectangleOutline:
-      return hasRectangle && hasToolSide ? { kind, id, depthMm, corner, widthMm, heightMm, toolSide } : null;
+      return hasRectangle && hasToolSide && tabs ? { kind, id, depthMm, corner, widthMm, heightMm, toolSide, tabs } : null;
     case DesignOperationKind.CircleOutline:
-      return hasCircle && hasToolSide ? { kind, id, depthMm, center, diameterMm, toolSide } : null;
+      return hasCircle && hasToolSide && tabs ? { kind, id, depthMm, center, diameterMm, toolSide, tabs } : null;
     case DesignOperationKind.RectanglePocket:
       return hasRectangle ? { kind, id, depthMm, corner, widthMm, heightMm } : null;
     case DesignOperationKind.CirclePocket:

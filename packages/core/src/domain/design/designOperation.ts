@@ -25,6 +25,25 @@ export enum ToolSide {
   Inside = 'inside',
 }
 
+/**
+ * Bridges of uncut material that keep a part attached to the sheet while it is cut out,
+ * so it cannot be thrown by the tool once free. They are cut off by hand afterwards.
+ */
+export interface HoldingTabs {
+  /** Number of tabs around the outline; zero turns them off. */
+  readonly count: number;
+  /** Length of each tab along the outline. */
+  readonly widthMm: number;
+  /** Thickness of the material left under each tab. */
+  readonly heightMm: number;
+}
+
+/** Tabs of a newly drawn outline: enough to hold a typical part, easy to cut off. */
+export const DEFAULT_HOLDING_TABS: HoldingTabs = { count: 4, widthMm: 8, heightMm: 2 };
+
+/** Tabs turned off, as in projects saved before tabs existed. */
+export const NO_HOLDING_TABS: HoldingTabs = { ...DEFAULT_HOLDING_TABS, count: 0 };
+
 interface OperationBase {
   readonly id: string;
   /** How deep to cut below the sheet's top, in millimeters. */
@@ -63,6 +82,7 @@ export interface RectangleOutlineOperation extends OperationBase {
   readonly widthMm: number;
   readonly heightMm: number;
   readonly toolSide: ToolSide;
+  readonly tabs: HoldingTabs;
 }
 
 /** Cut along the edge of a circle. */
@@ -71,6 +91,7 @@ export interface CircleOutlineOperation extends OperationBase {
   readonly center: SheetPoint;
   readonly diameterMm: number;
   readonly toolSide: ToolSide;
+  readonly tabs: HoldingTabs;
 }
 
 /** Rectangular recess with all material inside removed. */

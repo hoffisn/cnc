@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DesignOperationKind, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
+import { DEFAULT_HOLDING_TABS, DesignOperationKind, NO_HOLDING_TABS, ToolSide, type DesignOperation } from '@core/domain/design/designOperation';
 import { EMPTY_DESIGN_PROJECT, parseDesignProject, type DesignProject } from '@core/domain/design/designProject';
 import { DesignIssueCode, findDesignIssues } from '@core/domain/design/designRules';
 import {
@@ -54,7 +54,7 @@ describe('drawing shapes', () => {
       start: { x: 10, y: 10 },
       end: { x: 10, y: 10 },
     });
-    expect(operation).toMatchObject({ widthMm: 48, heightMm: 48, toolSide: ToolSide.Outside });
+    expect(operation).toMatchObject({ widthMm: 48, heightMm: 48, toolSide: ToolSide.Outside, tabs: DEFAULT_HOLDING_TABS });
   });
 });
 
@@ -99,7 +99,7 @@ describe('design rules', () => {
   });
 
   it('count the cut on the outer side of an outside contour', () => {
-    const outline: DesignOperation = { kind: DesignOperationKind.RectangleOutline, id: 'r', depthMm: 3, corner: { x: 4, y: 100 }, widthMm: 50, heightMm: 50, toolSide: ToolSide.Outside };
+    const outline: DesignOperation = { kind: DesignOperationKind.RectangleOutline, id: 'r', depthMm: 3, corner: { x: 4, y: 100 }, widthMm: 50, heightMm: 50, toolSide: ToolSide.Outside, tabs: NO_HOLDING_TABS };
     expect(computeCutFootprint(outline, 6).minX).toBe(-2);
     expect(issueCodes(withOperations(outline))).toEqual([DesignIssueCode.OperationOutsideSheet]);
     expect(issueCodes(withOperations({ ...outline, toolSide: ToolSide.Inside }))).toEqual([]);
@@ -135,8 +135,8 @@ describe('parseDesignProject', () => {
         { kind: DesignOperationKind.Hole, id: 'a', depthMm: 1, center: { x: 1, y: 2 } },
         { kind: DesignOperationKind.HoleGrid, id: 'b', depthMm: 1, origin: { x: 1, y: 2 }, columnCount: 2, rowCount: 2, spacingXMm: 5, spacingYMm: 5 },
         { kind: DesignOperationKind.Slot, id: 'c', depthMm: 1, start: { x: 0, y: 0 }, end: { x: 1, y: 1 } },
-        { kind: DesignOperationKind.RectangleOutline, id: 'd', depthMm: 1, corner: { x: 0, y: 0 }, widthMm: 9, heightMm: 9, toolSide: ToolSide.Inside },
-        { kind: DesignOperationKind.CircleOutline, id: 'e', depthMm: 1, center: { x: 0, y: 0 }, diameterMm: 9, toolSide: ToolSide.OnLine },
+        { kind: DesignOperationKind.RectangleOutline, id: 'd', depthMm: 1, corner: { x: 0, y: 0 }, widthMm: 9, heightMm: 9, toolSide: ToolSide.Inside, tabs: NO_HOLDING_TABS },
+        { kind: DesignOperationKind.CircleOutline, id: 'e', depthMm: 1, center: { x: 0, y: 0 }, diameterMm: 9, toolSide: ToolSide.OnLine, tabs: NO_HOLDING_TABS },
         { kind: DesignOperationKind.CirclePocket, id: 'f', depthMm: 1, center: { x: 0, y: 0 }, diameterMm: 9 },
       ],
     };

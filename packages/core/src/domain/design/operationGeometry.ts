@@ -1,4 +1,5 @@
 import {
+  DEFAULT_HOLDING_TABS,
   DesignOperationKind,
   ToolSide,
   type DesignOperation,
@@ -298,9 +299,9 @@ export function createOperationFromDrawing(drawing: OperationDrawing): DesignOpe
     case DesignOperationKind.Slot:
       return { kind, id, depthMm, start, end: isClick ? { x: start.x + defaultSize, y: start.y } : end };
     case DesignOperationKind.RectangleOutline:
-      return { kind, id, depthMm, ...rectangle, toolSide: ToolSide.Outside };
+      return { kind, id, depthMm, ...rectangle, toolSide: ToolSide.Outside, tabs: DEFAULT_HOLDING_TABS };
     case DesignOperationKind.CircleOutline:
-      return { kind, id, depthMm, center: start, diameterMm, toolSide: ToolSide.Outside };
+      return { kind, id, depthMm, center: start, diameterMm, toolSide: ToolSide.Outside, tabs: DEFAULT_HOLDING_TABS };
     case DesignOperationKind.RectanglePocket:
       return { kind, id, depthMm, ...rectangle };
     case DesignOperationKind.CirclePocket:
