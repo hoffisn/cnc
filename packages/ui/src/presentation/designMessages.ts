@@ -2,9 +2,11 @@ import {
   DesignIssueCode,
   DesignOperationKind,
   LengthUnit,
+  StockMaterial,
   ToolSide,
   ZeroOrigin,
   formatCoordinate,
+  type CuttingToolPreset,
   type DesignOperation,
 } from '@rezets/core';
 
@@ -25,6 +27,31 @@ export const TOOL_SIDE_LABELS: Readonly<Record<ToolSide, string>> = {
   [ToolSide.OnLine]: 'По линии',
   [ToolSide.Inside]: 'Внутри',
 };
+
+export const STOCK_MATERIAL_LABELS: Readonly<Record<StockMaterial, string>> = {
+  [StockMaterial.Softwood]: 'Мягкая древесина (сосна, ель)',
+  [StockMaterial.Hardwood]: 'Твёрдая древесина (дуб, бук)',
+  [StockMaterial.Plywood]: 'Фанера',
+  [StockMaterial.Mdf]: 'МДФ',
+  [StockMaterial.Acrylic]: 'Акрил (оргстекло)',
+  [StockMaterial.Hdpe]: 'Полиэтилен (HDPE)',
+  [StockMaterial.Aluminum]: 'Алюминий',
+};
+
+/** Russian noun form for a count: one, a few (2–4) or many. */
+function pluralize(count: number, one: string, few: string, many: string): string {
+  const lastTwoDigits = count % 100;
+  const lastDigit = count % 10;
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return many;
+  if (lastDigit === 1) return one;
+  return lastDigit >= 2 && lastDigit <= 4 ? few : many;
+}
+
+/** Name of a library cutter, such as «Ø 3,175 мм · 2 зуба». */
+export function describeToolPreset(preset: CuttingToolPreset): string {
+  const diameter = formatCoordinate(preset.diameterMm).replace('.', ',');
+  return `Ø ${diameter} мм · ${preset.fluteCount} ${pluralize(preset.fluteCount, 'зуб', 'зуба', 'зубьев')}`;
+}
 
 export const LENGTH_UNIT_LABELS: Readonly<Record<LengthUnit, string>> = {
   [LengthUnit.Millimeter]: 'мм',

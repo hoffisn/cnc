@@ -6,6 +6,7 @@ import {
   type HoldingTabs,
   type SheetPoint,
 } from './designOperation';
+import { CUTTING_TOOL_PRESETS, StockMaterial } from './cuttingLibrary';
 import { DEFAULT_WORK_SURFACE, LengthUnit, ZeroOrigin, type WorkSurface } from './workSurface';
 
 /** Current schema of persisted projects. */
@@ -118,7 +119,7 @@ function parseWorkSurface(stored: UnknownRecord): { surface: WorkSurface; wasRec
     return defaultValue;
   };
   const defaults = DEFAULT_WORK_SURFACE;
-  const { zeroOrigin, displayUnit } = stored;
+  const { zeroOrigin, displayUnit, material, toolPresetId } = stored;
   if (!isEnumValue<ZeroOrigin>(ZeroOrigin, zeroOrigin) || !isEnumValue<LengthUnit>(LengthUnit, displayUnit)) {
     wasRecovered = true;
   }
@@ -140,6 +141,8 @@ function parseWorkSurface(stored: UnknownRecord): { surface: WorkSurface; wasRec
       depthPerPassMm: positive('depthPerPassMm', defaults.depthPerPassMm),
       spindleSpeedRpm: positive('spindleSpeedRpm', defaults.spindleSpeedRpm),
       displayUnit: isEnumValue<LengthUnit>(LengthUnit, displayUnit) ? displayUnit : defaults.displayUnit,
+      material: isEnumValue<StockMaterial>(StockMaterial, material) ? material : null,
+      toolPresetId: CUTTING_TOOL_PRESETS.some((preset) => preset.id === toolPresetId) ? (toolPresetId as string) : null,
     },
     wasRecovered,
   };

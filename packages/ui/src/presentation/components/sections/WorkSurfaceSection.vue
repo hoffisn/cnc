@@ -2,24 +2,43 @@
 import { computed } from 'vue';
 import { ArrowRight } from '@lucide/vue';
 import {
+  CUTTING_TOOL_PRESETS,
   LengthUnit,
   MILLIMETERS_PER_LENGTH_UNIT,
+  StockMaterial,
   ZeroOrigin,
+  findCuttingToolPreset,
   findDesignIssues,
+  recommendCuttingParameters,
   type WorkSurface,
 } from '@rezets/core';
 import { useAppContext } from '@ui/presentation/appContext';
-import { DESIGN_ISSUE_MESSAGES, LENGTH_UNIT_LABELS, ZERO_ORIGIN_LABELS } from '@ui/presentation/designMessages';
+import {
+  DESIGN_ISSUE_MESSAGES,
+  LENGTH_UNIT_LABELS,
+  STOCK_MATERIAL_LABELS,
+  ZERO_ORIGIN_LABELS,
+  describeToolPreset,
+} from '@ui/presentation/designMessages';
 import { AppSection } from '@ui/presentation/navigation';
 import DesignCanvas from '@ui/presentation/components/design/DesignCanvas.vue';
 import NumberField from '@ui/presentation/components/ui/NumberField.vue';
 import SegmentedControl from '@ui/presentation/components/ui/SegmentedControl.vue';
+import SelectField from '@ui/presentation/components/ui/SelectField.vue';
 import UiButton from '@ui/presentation/components/ui/UiButton.vue';
 import { ButtonVariant } from '@ui/presentation/components/ui/buttonVariant';
 
 const { designer, activeSection } = useAppContext();
 
 const UNIT_OPTIONS = Object.values(LengthUnit).map((unit) => ({ value: unit, label: LENGTH_UNIT_LABELS[unit] }));
+const MATERIAL_OPTIONS: readonly { value: StockMaterial | null; label: string }[] = [
+  { value: null, label: 'Не выбран' },
+  ...Object.values(StockMaterial).map((material) => ({ value: material, label: STOCK_MATERIAL_LABELS[material] })),
+];
+const TOOL_OPTIONS: readonly { value: string | null; label: string }[] = [
+  { value: null, label: 'Своя фреза' },
+  ...CUTTING_TOOL_PRESETS.map((preset) => ({ value: preset.id, label: describeToolPreset(preset) })),
+];
 
 /** Numeric fields of the surface whose value must stay above zero. */
 type PositiveSurfaceField =
@@ -49,9 +68,30 @@ function update(change: Partial<WorkSurface>): void {
   designer.updateSurface({ ...surface.value, ...change });
 }
 
+/** Applies a change, and fills in cutting parameters when both the material and a library cutter are known. */
+function updateWithRecommendation(change: Partial<WorkSurface>): void {
+  const next = { ...surface.value, ...change };
+  const tool = findCuttingToolPreset(next.toolPresetId);
+  if (tool && next.material) {
+    designer.updateSurface({ ...next, ...recommendCuttingParameters(tool, next.material, next.spindleSpeedRpm) });
+  } else {
+    designer.updateSurface(next);
+  }
+}
+
+function chooseTool(toolPresetId: string | null): void {
+  const tool = findCuttingToolPreset(toolPresetId);
+  updateWithRecommendation(tool ? { toolPresetId, toolDiameterMm: tool.diameterMm } : { toolPresetId });
+}
+
+const isRecommended = computed(() => surface.value.material !== null && surface.value.toolPresetId !== null);
+
 /** A field left at zero would make the design meaningless, so such input is simply not applied. */
 function setPositive(field: PositiveSurfaceField, value: number): void {
-  if (value > 0) update({ [field]: value });
+  if (value <= 0) return;
+  if (field === 'toolDiameterMm') update({ toolDiameterMm: value, toolPresetId: null });
+  else if (field === 'spindleSpeedRpm') updateWithRecommendation({ spindleSpeedRpm: value });
+  else update({ [field]: value });
 }
 
 const setPositiveLength = (field: PositiveSurfaceField, value: number): void =>
@@ -132,6 +172,8 @@ const ZERO_CHOICES: readonly { readonly origin: ZeroOrigin; readonly left: strin
       <div class="group">
         <h2 class="card-title">Фреза и режимы</h2>
         <div class="group__fields">
+          <SelectField class="group__wide" :model-value="surface.material" :options="MATERIAL_OPTIONS" label="Материал" data-testid="stock-material" @update:model-value="updateWithRecommendation({ material: $event })" />
+          <SelectField class="group__wide" :model-value="surface.toolPresetId" :options="TOOL_OPTIONS" label="Фреза" data-testid="tool-preset" @update:model-value="chooseTool" />
           <NumberField :model-value="surface.toolDiameterMm" label="Диаметр фрезы" suffix="мм" data-testid="tool-diameter" @update:model-value="setPositive('toolDiameterMm', $event)" />
           <NumberField :model-value="surface.depthPerPassMm" label="Глубина за проход" suffix="мм" @update:model-value="setPositive('depthPerPassMm', $event)" />
           <NumberField :model-value="surface.feedRate" label="Скорость резания" suffix="мм/мин" @update:model-value="setPositive('feedRate', $event)" />
@@ -139,6 +181,13 @@ const ZERO_CHOICES: readonly { readonly origin: ZeroOrigin; readonly left: strin
           <NumberField :model-value="surface.safeHeightMm" label="Безопасная высота" suffix="мм" @update:model-value="setPositive('safeHeightMm', $event)" />
           <NumberField :model-value="surface.spindleSpeedRpm" label="Обороты шпинделя" suffix="об/мин" @update:model-value="setPositive('spindleSpeedRpm', $event)" />
         </div>
+        <p class="group__hint" data-testid="cutting-hint">
+          {{
+            isRecommended
+              ? 'Режимы подобраны под материал, фрезу и обороты. Их можно поправить вручную.'
+              : 'Выберите материал и фрезу, и скорости с глубиной прохода подберутся сами.'
+          }}
+        </p>
       </div>
 
       <ul v-if="surfaceIssues.length > 0" class="surface__issues" data-testid="surface-form-issues">
@@ -191,6 +240,16 @@ const ZERO_CHOICES: readonly { readonly origin: ZeroOrigin; readonly left: strin
   gap: 12px;
   align-items: end;
   margin-top: 12px;
+}
+
+.group__wide {
+  grid-column: 1 / -1;
+}
+
+.group__hint {
+  margin: 10px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
 }
 
 .zero {

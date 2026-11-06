@@ -1,4 +1,5 @@
 import type { ReliefStock } from '@core/domain/toolpath/relief';
+import type { StockMaterial } from './cuttingLibrary';
 
 /** Unit the operator prefers for entering work surface dimensions. Values are always stored in millimeters. */
 export enum LengthUnit {
@@ -46,6 +47,10 @@ export interface WorkSurface {
   readonly depthPerPassMm: number;
   readonly spindleSpeedRpm: number;
   readonly displayUnit: LengthUnit;
+  /** Material the cutting parameters were chosen for; `null` when they were set by hand. */
+  readonly material: StockMaterial | null;
+  /** Library cutter the parameters were chosen for; `null` for a cutter not in the library. */
+  readonly toolPresetId: string | null;
 }
 
 /** Surface of a new project: a typical sheet on a typical hobby or small production table. */
@@ -65,6 +70,8 @@ export const DEFAULT_WORK_SURFACE: WorkSurface = {
   depthPerPassMm: 3,
   spindleSpeedRpm: 18000,
   displayUnit: LengthUnit.Millimeter,
+  material: null,
+  toolPresetId: null,
 };
 
 /** Describes the sheet in program coordinates, with its top at `Z0`. */

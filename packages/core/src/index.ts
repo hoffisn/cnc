@@ -113,6 +113,14 @@ export {
 export { EMPTY_DESIGN_PROJECT, parseDesignProject, type DesignProject } from '@core/domain/design/designProject';
 export { DesignIssueCode, findDesignIssues, type DesignIssue } from '@core/domain/design/designRules';
 export { generateDesignGCode } from '@core/domain/design/designGenerator';
+export {
+  CUTTING_TOOL_PRESETS,
+  StockMaterial,
+  findCuttingToolPreset,
+  recommendCuttingParameters,
+  type CuttingParameters,
+  type CuttingToolPreset,
+} from '@core/domain/design/cuttingLibrary';
 export { areHoldingTabsActive, locateOperationTabs } from '@core/domain/design/designContours';
 
 // Application: ports
