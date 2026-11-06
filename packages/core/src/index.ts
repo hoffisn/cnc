@@ -125,9 +125,17 @@ export {
   StockMaterial,
   findCuttingToolPreset,
   recommendCuttingParameters,
+  type CuttingLimits,
   type CuttingParameters,
   type CuttingToolPreset,
 } from '@core/domain/design/cuttingLibrary';
+export {
+  MACHINE_PROFILES,
+  MachineProfileId,
+  applyMachineProfile,
+  findMachineProfile,
+  type MachineProfile,
+} from '@core/domain/design/machineProfile';
 export { areHoldingTabsActive, locateOperationTabs } from '@core/domain/design/designContours';
 export {
   findPathsBounds,

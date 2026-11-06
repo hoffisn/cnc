@@ -2,6 +2,7 @@ import {
   DesignIssueCode,
   DesignOperationKind,
   LengthUnit,
+  MachineProfileId,
   ShapeCut,
   StockMaterial,
   findPathsBounds,
@@ -35,6 +36,13 @@ export const TOOL_SIDE_LABELS: Readonly<Record<ToolSide, string>> = {
   [ToolSide.Outside]: 'Снаружи',
   [ToolSide.OnLine]: 'По линии',
   [ToolSide.Inside]: 'Внутри',
+};
+
+/** Names of machine kinds as the operator knows them from the shop. */
+export const MACHINE_PROFILE_LABELS: Readonly<Record<MachineProfileId, string>> = {
+  [MachineProfileId.Cnc3018]: 'Настольный CNC 3018',
+  [MachineProfileId.Cnc6040]: 'Настольный CNC 6040',
+  [MachineProfileId.SheetRouter]: 'Листовой фрезер 1300 × 900',
 };
 
 export const STOCK_MATERIAL_LABELS: Readonly<Record<StockMaterial, string>> = {

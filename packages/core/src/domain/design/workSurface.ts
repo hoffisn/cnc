@@ -1,5 +1,6 @@
 import type { ReliefStock } from '@core/domain/toolpath/relief';
 import type { StockMaterial } from './cuttingLibrary';
+import { MachineProfileId } from './machineProfile';
 
 /** Unit the operator prefers for entering work surface dimensions. Values are always stored in millimeters. */
 export enum LengthUnit {
@@ -26,6 +27,8 @@ export enum ZeroOrigin {
 
 /** The machine's table, the sheet lying on it, and the parameters of cutting that sheet. */
 export interface WorkSurface {
+  /** Kind of machine the surface was set up for; `null` for a machine set up by hand. */
+  readonly machineProfileId: MachineProfileId | null;
   readonly tableWidthMm: number;
   readonly tableDepthMm: number;
   readonly sheetWidthMm: number;
@@ -55,6 +58,7 @@ export interface WorkSurface {
 
 /** Surface of a new project: a typical sheet on a typical hobby or small production table. */
 export const DEFAULT_WORK_SURFACE: WorkSurface = {
+  machineProfileId: MachineProfileId.SheetRouter,
   tableWidthMm: 1300,
   tableDepthMm: 900,
   sheetWidthMm: 1000,

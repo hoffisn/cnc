@@ -9,6 +9,7 @@ import {
   type SheetPoint,
 } from './designOperation';
 import { CUTTING_TOOL_PRESETS, StockMaterial } from './cuttingLibrary';
+import { MachineProfileId } from './machineProfile';
 import { DEFAULT_WORK_SURFACE, LengthUnit, ZeroOrigin, type WorkSurface } from './workSurface';
 
 /** Current schema of persisted projects. */
@@ -141,13 +142,14 @@ function parseWorkSurface(stored: UnknownRecord): { surface: WorkSurface; wasRec
     return defaultValue;
   };
   const defaults = DEFAULT_WORK_SURFACE;
-  const { zeroOrigin, displayUnit, material, toolPresetId } = stored;
+  const { zeroOrigin, displayUnit, material, toolPresetId, machineProfileId } = stored;
   if (!isEnumValue<ZeroOrigin>(ZeroOrigin, zeroOrigin) || !isEnumValue<LengthUnit>(LengthUnit, displayUnit)) {
     wasRecovered = true;
   }
 
   return {
     surface: {
+      machineProfileId: isEnumValue<MachineProfileId>(MachineProfileId, machineProfileId) ? machineProfileId : null,
       tableWidthMm: positive('tableWidthMm', defaults.tableWidthMm),
       tableDepthMm: positive('tableDepthMm', defaults.tableDepthMm),
       sheetWidthMm: positive('sheetWidthMm', defaults.sheetWidthMm),

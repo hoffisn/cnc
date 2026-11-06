@@ -4,10 +4,13 @@ import { ArrowRight } from '@lucide/vue';
 import {
   CUTTING_TOOL_PRESETS,
   LengthUnit,
+  MachineProfileId,
   MILLIMETERS_PER_LENGTH_UNIT,
   StockMaterial,
   ZeroOrigin,
+  applyMachineProfile,
   findCuttingToolPreset,
+  findMachineProfile,
   findDesignIssues,
   recommendCuttingParameters,
   type WorkSurface,
@@ -16,6 +19,7 @@ import { useAppContext } from '@ui/presentation/appContext';
 import {
   DESIGN_ISSUE_MESSAGES,
   LENGTH_UNIT_LABELS,
+  MACHINE_PROFILE_LABELS,
   STOCK_MATERIAL_LABELS,
   ZERO_ORIGIN_LABELS,
   describeToolPreset,
@@ -34,6 +38,10 @@ const UNIT_OPTIONS = Object.values(LengthUnit).map((unit) => ({ value: unit, lab
 const MATERIAL_OPTIONS: readonly { value: StockMaterial | null; label: string }[] = [
   { value: null, label: 'Не выбран' },
   ...Object.values(StockMaterial).map((material) => ({ value: material, label: STOCK_MATERIAL_LABELS[material] })),
+];
+const MACHINE_OPTIONS: readonly { value: MachineProfileId | null; label: string }[] = [
+  ...Object.values(MachineProfileId).map((id) => ({ value: id, label: MACHINE_PROFILE_LABELS[id] })),
+  { value: null, label: 'Свой станок' },
 ];
 const TOOL_OPTIONS: readonly { value: string | null; label: string }[] = [
   { value: null, label: 'Своя фреза' },
@@ -55,6 +63,7 @@ type PositiveSurfaceField =
   | 'spindleSpeedRpm';
 
 const surface = computed(() => designer.project.value.surface);
+const machineProfile = computed(() => findMachineProfile(surface.value.machineProfileId));
 const unitLabel = computed(() => LENGTH_UNIT_LABELS[surface.value.displayUnit]);
 const millimetersPerUnit = computed(() => MILLIMETERS_PER_LENGTH_UNIT[surface.value.displayUnit]);
 
@@ -73,10 +82,17 @@ function updateWithRecommendation(change: Partial<WorkSurface>): void {
   const next = { ...surface.value, ...change };
   const tool = findCuttingToolPreset(next.toolPresetId);
   if (tool && next.material) {
-    designer.updateSurface({ ...next, ...recommendCuttingParameters(tool, next.material, next.spindleSpeedRpm) });
+    const limits = findMachineProfile(next.machineProfileId)?.limits;
+    designer.updateSurface({ ...next, ...recommendCuttingParameters(tool, next.material, next.spindleSpeedRpm, limits) });
   } else {
     designer.updateSurface(next);
   }
+}
+
+/** Sets the surface up for a machine; a machine set up by hand keeps everything as it is. */
+function chooseMachine(id: MachineProfileId | null): void {
+  const profile = findMachineProfile(id);
+  designer.updateSurface(profile ? applyMachineProfile(surface.value, profile) : { ...surface.value, machineProfileId: null });
 }
 
 function chooseTool(toolPresetId: string | null): void {
@@ -89,7 +105,8 @@ const isRecommended = computed(() => surface.value.material !== null && surface.
 /** A field left at zero would make the design meaningless, so such input is simply not applied. */
 function setPositive(field: PositiveSurfaceField, value: number): void {
   if (value <= 0) return;
-  if (field === 'toolDiameterMm') update({ toolDiameterMm: value, toolPresetId: null });
+  if (field === 'tableWidthMm' || field === 'tableDepthMm') update({ [field]: value, machineProfileId: null });
+  else if (field === 'toolDiameterMm') update({ toolDiameterMm: value, toolPresetId: null });
   else if (field === 'spindleSpeedRpm') updateWithRecommendation({ spindleSpeedRpm: value });
   else update({ [field]: value });
 }
@@ -127,10 +144,11 @@ const ZERO_CHOICES: readonly { readonly origin: ZeroOrigin; readonly left: strin
       </div>
 
       <div class="group">
-        <h2 class="card-title">Стол станка</h2>
+        <h2 class="card-title">Станок</h2>
         <div class="group__fields">
-          <NumberField :model-value="toDisplayLength(surface.tableWidthMm)" label="Ширина" :suffix="unitLabel" data-testid="table-width" @update:model-value="setPositiveLength('tableWidthMm', $event)" />
-          <NumberField :model-value="toDisplayLength(surface.tableDepthMm)" label="Глубина" :suffix="unitLabel" data-testid="table-depth" @update:model-value="setPositiveLength('tableDepthMm', $event)" />
+          <SelectField class="group__wide" :model-value="surface.machineProfileId" :options="MACHINE_OPTIONS" label="Модель" data-testid="machine-profile" @update:model-value="chooseMachine" />
+          <NumberField :model-value="toDisplayLength(surface.tableWidthMm)" label="Ширина стола" :suffix="unitLabel" data-testid="table-width" @update:model-value="setPositiveLength('tableWidthMm', $event)" />
+          <NumberField :model-value="toDisplayLength(surface.tableDepthMm)" label="Глубина стола" :suffix="unitLabel" data-testid="table-depth" @update:model-value="setPositiveLength('tableDepthMm', $event)" />
         </div>
       </div>
 
@@ -187,6 +205,9 @@ const ZERO_CHOICES: readonly { readonly origin: ZeroOrigin; readonly left: strin
               ? 'Режимы подобраны под материал, фрезу и обороты. Их можно поправить вручную.'
               : 'Выберите материал и фрезу, и скорости с глубиной прохода подберутся сами.'
           }}
+          <template v-if="machineProfile">
+            Для этого станка не больше {{ machineProfile.limits.maxFeedRate }} мм/мин и {{ String(machineProfile.limits.maxDepthPerPassMm).replace('.', ',') }} мм за проход.
+          </template>
         </p>
       </div>
 

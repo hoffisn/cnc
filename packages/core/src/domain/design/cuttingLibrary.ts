@@ -24,6 +24,12 @@ export interface CuttingParameters {
   readonly depthPerPassMm: number;
 }
 
+/** What a machine's frame withstands, whatever the cutter could take. */
+export interface CuttingLimits {
+  readonly maxFeedRate: number;
+  readonly maxDepthPerPassMm: number;
+}
+
 /** How a material behaves under a cutter, relative to the cutter's diameter. */
 interface MaterialCuttingData {
   /** Chip thickness per tooth, per millimeter of diameter. */
@@ -73,18 +79,22 @@ export function findCuttingToolPreset(id: string | null): CuttingToolPreset | nu
 /**
  * Recommends cutting parameters: the feed gives each tooth a chip of the right thickness
  * at the given spindle speed, and the depth per pass follows the material's hardness.
+ * Both stay within the machine's limits when they are known.
  */
 export function recommendCuttingParameters(
   tool: CuttingToolPreset,
   material: StockMaterial,
   spindleSpeedRpm: number,
+  limits?: CuttingLimits,
 ): CuttingParameters {
   const data = MATERIAL_CUTTING_DATA[material];
   const chipLoadMm = data.chipLoadPerDiameter * tool.diameterMm;
-  const feedRate = Math.max(roundTo(spindleSpeedRpm * tool.fluteCount * chipLoadMm, FEED_ROUNDING_MM_PER_MIN), MIN_FEED_RATE);
+  const toolFeedRate = spindleSpeedRpm * tool.fluteCount * chipLoadMm;
+  const feedRate = Math.max(roundTo(Math.min(toolFeedRate, limits?.maxFeedRate ?? Infinity), FEED_ROUNDING_MM_PER_MIN), MIN_FEED_RATE);
+  const toolDepthMm = tool.diameterMm * data.depthPerPassInDiameters;
   return {
     feedRate,
     plungeFeedRate: Math.max(roundTo(feedRate * data.plungeRatio, FEED_ROUNDING_MM_PER_MIN), MIN_FEED_RATE),
-    depthPerPassMm: Math.max(roundTo(tool.diameterMm * data.depthPerPassInDiameters, DEPTH_ROUNDING_MM), MIN_DEPTH_PER_PASS_MM),
+    depthPerPassMm: Math.max(roundTo(Math.min(toolDepthMm, limits?.maxDepthPerPassMm ?? Infinity), DEPTH_ROUNDING_MM), MIN_DEPTH_PER_PASS_MM),
   };
 }
