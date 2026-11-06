@@ -38,7 +38,7 @@ export const MACHINE_PROFILES: Readonly<Record<MachineProfileId, MachineProfile>
     sheetOffsetXMm: 50,
     sheetOffsetYMm: 15,
     toolPresetId: 'end-mill-3.175-2',
-    spindleSpeedRpm: 10000,
+    spindleSpeedRpm: 7000,
     safeHeightMm: 3,
     limits: { maxFeedRate: 600, maxDepthPerPassMm: 1 },
     cutting: { feedRate: 400, plungeFeedRate: 120, depthPerPassMm: 0.6 },
