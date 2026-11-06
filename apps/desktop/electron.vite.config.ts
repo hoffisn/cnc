@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'electron-vite';
+import { bootScreenPlugin } from '../../packages/ui/tooling/bootScreenPlugin';
 
 const sharedAliases = {
   '@core': resolve(__dirname, '../../packages/core/src'),
@@ -22,6 +23,6 @@ export default defineConfig({
       // "localhost" may resolve to IPv6 for the dev server and to IPv4 for the Electron window.
       host: '127.0.0.1',
     },
-    plugins: [vue()],
+    plugins: [vue(), bootScreenPlugin()],
   },
 });

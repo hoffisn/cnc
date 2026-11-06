@@ -141,6 +141,27 @@ function handlePrimaryAction(): void {
   }
 }
 
+/* On small tablets the progress moves to its own row above the buttons. */
+@media (max-width: 1100px) {
+  .run-bar {
+    flex-wrap: wrap;
+  }
+
+  .run-bar__progress {
+    flex-basis: 100%;
+    order: -1;
+    margin: 0 0 4px;
+  }
+
+  .run-bar__primary {
+    min-width: 0;
+  }
+
+  .run-bar__speed {
+    margin-left: auto;
+  }
+}
+
 .run-bar__speed-label {
   color: var(--color-text-secondary);
   font-size: 13px;

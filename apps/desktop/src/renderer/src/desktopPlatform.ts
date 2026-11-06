@@ -76,7 +76,7 @@ function createMachineLinkProvider(bridge: DesktopBridge): MachineLinkProvider {
 }
 
 /** Whole sheets need a finer grid than a single part for small holes to stay visible. */
-const DESKTOP_RELIEF_QUALITY = { programResolution: 420, designResolution: 700 };
+const DESKTOP_RELIEF_QUALITY = { programResolution: 800, designResolution: 1100 };
 
 /** Implements the interface's needs on top of Electron. */
 export function createDesktopPlatform(bridge: DesktopBridge): PlatformServices {

@@ -235,9 +235,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
     grid-template-columns: 232px minmax(0, 1fr) 240px;
   }
 
-  .tools__item {
-    font-size: 11.5px;
-  }
 }
 
 .designer__tools {
@@ -255,22 +252,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
   padding: 0 4px;
 }
 
+/* One tool per row: names like «Контур прямоугольника» never break inside a word. */
 .tools__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin-top: 10px;
 }
 
 .tools__item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  min-height: 72px;
-  padding: 10px;
-  overflow-wrap: anywhere;
+  min-height: 40px;
+  padding: 8px 12px;
   border: 0;
   border-radius: var(--radius-medium);
   background: var(--color-surface-muted);
@@ -288,6 +285,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeyDown));
 .tools__item--active,
 .tools__item--active:hover {
   background: var(--color-accent);
+}
+
+/* Low screens keep room for the list of operations below the tools. */
+@media (max-height: 700px) {
+  .tools {
+    padding: 12px 10px 8px;
+  }
+
+  .tools__grid {
+    gap: 2px;
+    margin-top: 6px;
+  }
+
+  .tools__item {
+    min-height: 32px;
+    padding: 6px 10px;
+  }
 }
 
 .operations {

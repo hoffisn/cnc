@@ -81,4 +81,23 @@ const axisRows = computed(() =>
   font-size: 12px;
   font-weight: 500;
 }
+
+/* Low screens, such as small tablets in landscape, leave more room for the jog buttons. */
+@media (max-height: 700px) {
+  .readout {
+    padding: 12px 14px;
+  }
+
+  .readout__rows {
+    margin-top: 6px;
+  }
+
+  .readout__row {
+    height: 32px;
+  }
+
+  .readout__value {
+    font-size: 16px;
+  }
+}
 </style>

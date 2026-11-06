@@ -3,6 +3,7 @@ import type { Component } from 'vue';
 import { Cog, Cpu, DraftingCompass, LayoutGrid } from '@lucide/vue';
 import { useAppContext } from '@ui/presentation/appContext';
 import { AppSection } from '@ui/presentation/navigation';
+import BrandMark from './BrandMark.vue';
 
 const { activeSection } = useAppContext();
 
@@ -16,7 +17,7 @@ const NAVIGATION_ITEMS: readonly { readonly section: AppSection; readonly label:
 
 <template>
   <nav class="sidebar">
-    <span class="sidebar__logo" aria-label="Резец">Р</span>
+    <BrandMark class="sidebar__logo" :size="40" />
     <button
       v-for="item in NAVIGATION_ITEMS"
       :key="item.section"
@@ -45,17 +46,8 @@ const NAVIGATION_ITEMS: readonly { readonly section: AppSection; readonly label:
 }
 
 .sidebar__logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+  flex-shrink: 0;
   margin-bottom: 16px;
-  border-radius: 12px;
-  background: var(--color-accent);
-  color: var(--color-accent-text);
-  font-size: 22px;
-  font-weight: 800;
 }
 
 .sidebar__item {

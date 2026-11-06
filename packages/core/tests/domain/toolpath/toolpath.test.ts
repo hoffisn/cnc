@@ -91,7 +91,8 @@ describe('computeRelief', () => {
   const heightAt = (relief: Relief, x: number, y: number): number | undefined => {
     const column = Math.round((x - relief.originX) / relief.cellSize);
     const row = Math.round((y - relief.originY) / relief.cellSize);
-    return relief.heights[row * relief.columnCount + column];
+    const isOnGrid = column >= 0 && column < relief.columnCount && row >= 0 && row < relief.rowCount;
+    return isOnGrid ? relief.heights[row * relief.columnCount + column] : relief.stockTopZ;
   };
 
   const computeOrFail = (source: string): Relief => {
@@ -141,5 +142,15 @@ describe('computeRelief', () => {
     const relief = computeOrFail('G0 X0 Y0 Z12\nG1 Z10 F100\nG1 X30');
     expect(relief.stockTopZ).toBe(12);
     expect(relief.lowestZ).toBeCloseTo(10);
+  });
+
+  it('spends the grid on the machined area of a large sheet', () => {
+    const stock = { minX: 0, minY: 0, maxX: 1000, maxY: 600, topZ: 0, bottomZ: -18 };
+    const relief = computeRelief(buildPath('G0 X500 Y300 Z5\nG1 Z-3 F100\nG1 X520'), { ...reliefOptions, stock });
+    if (!relief) throw new Error('a relief was expected');
+    expect(relief.stockOutline).toEqual({ minX: 0, minY: 0, maxX: 1000, maxY: 600 });
+    expect(relief.cellSize).toBeLessThan(0.2);
+    expect(heightAt(relief, 510, 300)).toBeCloseTo(-3);
+    expect(heightAt(relief, relief.originX, relief.originY)).toBe(0);
   });
 });

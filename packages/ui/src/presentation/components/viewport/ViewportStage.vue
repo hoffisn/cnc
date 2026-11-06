@@ -148,6 +148,7 @@ onBeforeUnmount(() => viewport?.dispose());
   overflow: hidden;
   border-radius: var(--radius-large);
   background: #eef0f3;
+  container: stage / inline-size;
 }
 
 .stage__canvas {
@@ -171,6 +172,13 @@ onBeforeUnmount(() => viewport?.dispose());
 .stage__overlay--top-right {
   top: 12px;
   right: 12px;
+}
+
+/* In a narrow viewport the camera presets go below the mode switch instead of overlapping it. */
+@container stage (max-width: 600px) {
+  .stage__overlay--top-right {
+    top: 64px;
+  }
 }
 
 .stage__overlay--bottom-left {

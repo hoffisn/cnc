@@ -117,8 +117,7 @@ export class ToolpathViewport {
     this.requestRender();
   }
 
-  /** Sets what the camera should frame instead of the toolpath, such as the whole sheet; 
-ull frames the toolpath. */
+  /** Sets what the camera should frame instead of the toolpath, such as the whole sheet; `null` frames the toolpath. */
   setFramedBounds(bounds: Bounds | null): void {
     this.framedBounds = bounds;
   }

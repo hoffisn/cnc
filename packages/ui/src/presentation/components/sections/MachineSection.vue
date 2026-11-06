@@ -44,6 +44,12 @@ const { workspace } = useAppContext();
   }
 }
 
+@media (max-width: 1100px) {
+  .machine {
+    grid-template-columns: 208px minmax(0, 1fr) 272px;
+  }
+}
+
 .machine__column {
   display: flex;
   flex-direction: column;

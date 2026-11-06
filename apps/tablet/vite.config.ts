@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
+import { bootScreenPlugin } from '../../packages/ui/tooling/bootScreenPlugin';
 
 export default defineConfig({
   resolve: {
@@ -10,5 +11,5 @@ export default defineConfig({
     },
   },
   server: { host: '127.0.0.1' },
-  plugins: [vue()],
+  plugins: [vue(), bootScreenPlugin()],
 });

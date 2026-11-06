@@ -13,6 +13,9 @@ const MIN_BASE_THICKNESS_IN_CELLS = 3;
 /** Heights closer to the stock top than this fraction of the cell are treated as uncut. */
 const UNCUT_EPSILON = 1e-4;
 
+/** Distances below this, in millimeters, mean the grid lies on the edge of the stock. */
+const OUTLINE_EPSILON = 1e-6;
+
 /** Growing arrays for a mesh whose final size is known up front. */
 interface MeshBuffers {
   readonly positions: Float32Array;
@@ -78,39 +81,105 @@ function addTopSurface(buffers: MeshBuffers, relief: Relief): void {
   }
 }
 
-/** Adds one flat side wall running along a list of grid nodes. */
+/** Top of a point on the outline of the stock. */
+interface OutlinePoint {
+  readonly x: number;
+  readonly y: number;
+  readonly topZ: number;
+}
+
+/** Adds an uncut rectangle of the stock top. */
+function addFlatTop(buffers: MeshBuffers, z: number, minX: number, minY: number, maxX: number, maxY: number): void {
+  if (maxX - minX <= OUTLINE_EPSILON || maxY - minY <= OUTLINE_EPSILON) return;
+  addQuad(
+    buffers,
+    addVertex(buffers, minX, minY, z, 0, 0, 1, STOCK_TOP_COLOR),
+    addVertex(buffers, maxX, minY, z, 0, 0, 1, STOCK_TOP_COLOR),
+    addVertex(buffers, maxX, maxY, z, 0, 0, 1, STOCK_TOP_COLOR),
+    addVertex(buffers, minX, maxY, z, 0, 0, 1, STOCK_TOP_COLOR),
+  );
+}
+
+/**
+ * Fills the stock top between the grid and the outline.
+ * The strips are split at every grid node on their shared edge, so the flat top and the grid
+ * meet without T-junctions, which would show as flickering cracks.
+ */
+function addUncutStock(buffers: MeshBuffers, relief: Relief, gridMaxX: number, gridMaxY: number): void {
+  const { stockOutline: outline, originX, originY, cellSize, columnCount, rowCount, stockTopZ } = relief;
+  for (let column = 0; column < columnCount - 1; column += 1) {
+    const left = originX + column * cellSize;
+    const right = left + cellSize;
+    addFlatTop(buffers, stockTopZ, left, outline.minY, right, originY);
+    addFlatTop(buffers, stockTopZ, left, gridMaxY, right, outline.maxY);
+  }
+  const rowEdges = [outline.minY, ...Array.from({ length: rowCount }, (_, row) => originY + row * cellSize), outline.maxY];
+  for (let edge = 0; edge < rowEdges.length - 1; edge += 1) {
+    const bottom = rowEdges[edge] as number;
+    const top = rowEdges[edge + 1] as number;
+    addFlatTop(buffers, stockTopZ, outline.minX, bottom, originX, top);
+    addFlatTop(buffers, stockTopZ, gridMaxX, bottom, outline.maxX, top);
+  }
+}
+
+/** Adds one flat side wall running along a list of outline points. */
 function addSideWall(
   buffers: MeshBuffers,
-  relief: Relief,
   baseZ: number,
-  nodes: readonly (readonly [number, number])[],
+  points: readonly OutlinePoint[],
   normalX: number,
   normalY: number,
 ): void {
-  const { columnCount, originX, originY, cellSize, heights } = relief;
   let previousTop = -1;
   let previousBottom = -1;
-  nodes.forEach(([column, row], nodeIndex) => {
-    const x = originX + column * cellSize;
-    const y = originY + row * cellSize;
-    const top = addVertex(buffers, x, y, heights[row * columnCount + column] as number, normalX, normalY, 0, STOCK_SIDE_COLOR);
+  points.forEach(({ x, y, topZ }, pointIndex) => {
+    const top = addVertex(buffers, x, y, topZ, normalX, normalY, 0, STOCK_SIDE_COLOR);
     const bottom = addVertex(buffers, x, y, baseZ, normalX, normalY, 0, STOCK_SIDE_COLOR);
-    if (nodeIndex > 0) addQuad(buffers, previousBottom, bottom, top, previousTop);
+    if (pointIndex > 0) addQuad(buffers, previousBottom, bottom, top, previousTop);
     previousTop = top;
     previousBottom = bottom;
   });
 }
 
+/** Adds the four walls; where the grid reaches the edge of the stock, the wall follows the cut. */
+function addSideWalls(buffers: MeshBuffers, relief: Relief, baseZ: number, gridMaxX: number, gridMaxY: number): void {
+  const { stockOutline: outline, originX, originY, cellSize, columnCount, rowCount, heights, stockTopZ } = relief;
+  const lastColumn = columnCount - 1;
+  const lastRow = rowCount - 1;
+  const gridRow = (row: number): OutlinePoint[] =>
+    Array.from({ length: columnCount }, (_, column) => ({
+      x: originX + column * cellSize,
+      y: originY + row * cellSize,
+      topZ: heights[row * columnCount + column] as number,
+    }));
+  const gridColumn = (column: number): OutlinePoint[] =>
+    Array.from({ length: rowCount }, (_, row) => ({
+      x: originX + column * cellSize,
+      y: originY + row * cellSize,
+      topZ: heights[row * columnCount + column] as number,
+    }));
+  const corner = (x: number, y: number): OutlinePoint => ({ x, y, topZ: stockTopZ });
+  const touches = (gridEdge: number, outlineEdge: number): boolean => Math.abs(gridEdge - outlineEdge) <= OUTLINE_EPSILON;
+
+  const front = touches(originY, outline.minY) ? gridRow(0) : [];
+  const right = touches(gridMaxX, outline.maxX) ? gridColumn(lastColumn) : [];
+  const back = touches(gridMaxY, outline.maxY) ? gridRow(lastRow).reverse() : [];
+  const left = touches(originX, outline.minX) ? gridColumn(0).reverse() : [];
+
+  addSideWall(buffers, baseZ, [corner(outline.minX, outline.minY), ...front, corner(outline.maxX, outline.minY)], 0, -1);
+  addSideWall(buffers, baseZ, [corner(outline.maxX, outline.minY), ...right, corner(outline.maxX, outline.maxY)], 1, 0);
+  addSideWall(buffers, baseZ, [corner(outline.maxX, outline.maxY), ...back, corner(outline.minX, outline.maxY)], 0, 1);
+  addSideWall(buffers, baseZ, [corner(outline.minX, outline.maxY), ...left, corner(outline.minX, outline.minY)], -1, 0);
+}
+
 /** Closes the bottom of the stock. */
 function addBottom(buffers: MeshBuffers, relief: Relief, baseZ: number): void {
-  const { columnCount, rowCount, originX, originY, cellSize } = relief;
-  const maxX = originX + (columnCount - 1) * cellSize;
-  const maxY = originY + (rowCount - 1) * cellSize;
+  const { minX, minY, maxX, maxY } = relief.stockOutline;
   const corners = [
-    addVertex(buffers, originX, originY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
-    addVertex(buffers, originX, maxY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
+    addVertex(buffers, minX, minY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
+    addVertex(buffers, minX, maxY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
     addVertex(buffers, maxX, maxY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
-    addVertex(buffers, maxX, originY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
+    addVertex(buffers, maxX, minY, baseZ, 0, 0, -1, STOCK_SIDE_COLOR),
   ] as const;
   addQuad(buffers, corners[0], corners[1], corners[2], corners[3]);
 }
@@ -122,14 +191,17 @@ export function computeReliefBaseZ(relief: Relief): number {
   return lowestZ - Math.max((stockTopZ - lowestZ) * BASE_THICKNESS_IN_CUT_DEPTHS, cellSize * MIN_BASE_THICKNESS_IN_CELLS);
 }
 
-/** Builds a closed solid: the machined surface, four walls and a bottom. */
+/** Builds a closed solid: the machined surface, the uncut stock around it, four walls and a bottom. */
 function buildReliefGeometry(relief: Relief): BufferGeometry {
-  const { columnCount, rowCount } = relief;
+  const { columnCount, rowCount, originX, originY, cellSize } = relief;
   const baseZ = computeReliefBaseZ(relief);
+  const gridMaxX = originX + (columnCount - 1) * cellSize;
+  const gridMaxY = originY + (rowCount - 1) * cellSize;
 
-  const wallVertexCount = (columnCount + rowCount) * 4;
-  const vertexCapacity = columnCount * rowCount + wallVertexCount + 4;
-  const quadCapacity = (columnCount - 1) * (rowCount - 1) + (columnCount + rowCount) * 2 + 1;
+  const flatQuadCapacity = 2 * columnCount + 2 * (rowCount + 1);
+  const wallPointCapacity = 2 * (columnCount + rowCount) + 8;
+  const vertexCapacity = columnCount * rowCount + flatQuadCapacity * 4 + wallPointCapacity * 2 + 4;
+  const quadCapacity = (columnCount - 1) * (rowCount - 1) + flatQuadCapacity + wallPointCapacity + 1;
   const buffers: MeshBuffers = {
     positions: new Float32Array(vertexCapacity * 3),
     normals: new Float32Array(vertexCapacity * 3),
@@ -140,21 +212,8 @@ function buildReliefGeometry(relief: Relief): BufferGeometry {
   };
 
   addTopSurface(buffers, relief);
-
-  const lastColumn = columnCount - 1;
-  const lastRow = rowCount - 1;
-  const alongColumns = (row: number, reversed: boolean): (readonly [number, number])[] => {
-    const nodes = Array.from({ length: columnCount }, (_, column) => [column, row] as const);
-    return reversed ? nodes.reverse() : nodes;
-  };
-  const alongRows = (column: number, reversed: boolean): (readonly [number, number])[] => {
-    const nodes = Array.from({ length: rowCount }, (_, row) => [column, row] as const);
-    return reversed ? nodes.reverse() : nodes;
-  };
-  addSideWall(buffers, relief, baseZ, alongColumns(0, false), 0, -1);
-  addSideWall(buffers, relief, baseZ, alongRows(lastColumn, false), 1, 0);
-  addSideWall(buffers, relief, baseZ, alongColumns(lastRow, true), 0, 1);
-  addSideWall(buffers, relief, baseZ, alongRows(0, true), -1, 0);
+  addUncutStock(buffers, relief, gridMaxX, gridMaxY);
+  addSideWalls(buffers, relief, baseZ, gridMaxX, gridMaxY);
   addBottom(buffers, relief, baseZ);
 
   const geometry = new BufferGeometry();

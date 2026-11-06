@@ -1,7 +1,21 @@
 import { COORDINATES_PER_SEGMENT, SegmentKind, type Toolpath } from './toolpath';
 
-/** Surface left after machining: heights at the nodes of a uniform XY grid. */
+/** Rectangle in the XY plane, in program coordinates. */
+export interface PlanarRectangle {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+/**
+ * Surface left after machining.
+ * The heights cover only the area the cutter reaches, so detail does not depend on the size
+ * of the sheet; the rest of the stock, up to `stockOutline`, stays flat at `stockTopZ`.
+ */
 export interface Relief {
+  /** Whole workpiece; it contains the grid. */
+  readonly stockOutline: PlanarRectangle;
   readonly columnCount: number;
   readonly rowCount: number;
   readonly originX: number;
@@ -16,11 +30,7 @@ export interface Relief {
 }
 
 /** Real dimensions of the workpiece, in program coordinates. */
-export interface ReliefStock {
-  readonly minX: number;
-  readonly minY: number;
-  readonly maxX: number;
-  readonly maxY: number;
+export interface ReliefStock extends PlanarRectangle {
   readonly topZ: number;
   readonly bottomZ: number;
 }
@@ -29,7 +39,7 @@ export interface ReliefStock {
 export interface ReliefOptions {
   /** Diameter of a flat-end cylindrical cutter, in millimeters. */
   readonly toolDiameter: number;
-  /** Grid nodes along the longer side, which trades quality for speed. */
+  /** Grid nodes along the longer side of the machined area, which trades quality for speed. */
   readonly maxResolution: number;
   /** Workpiece to carve. Without it, the stock is estimated from the program itself. */
   readonly stock?: ReliefStock;
@@ -39,6 +49,8 @@ export interface ReliefOptions {
 const STOCK_MARGIN_TOOL_RADII = 1.5;
 const MIN_GRID_NODES = 2;
 const HORIZONTAL_EPSILON = 1e-12;
+/** Uncut border kept around the machined area, in cells, so the grid meets the flat stock at its top. */
+const MACHINED_AREA_MARGIN_CELLS = 2;
 
 /**
  * Picks the top of the stock: normally `Z0`; when the whole program stays above zero
@@ -66,6 +78,67 @@ function estimateStock(toolpath: Toolpath, toolRadius: number): ReliefStock | nu
     topZ,
     bottomZ: partBounds.min.z,
   };
+}
+
+/**
+ * Finds the part of the stock the cutter can reach: the extent of cutting moves below the stock top,
+ * widened by the tool radius and clipped to the stock.
+ *
+ * @returns `null` when no move cuts into the stock.
+ */
+function findMachinedArea(toolpath: Toolpath, stock: ReliefStock, toolRadius: number): PlanarRectangle | null {
+  const coordinates = toolpath.segmentCoordinates;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let segmentIndex = 0; segmentIndex < toolpath.segmentCount; segmentIndex += 1) {
+    if (toolpath.segmentKinds[segmentIndex] !== SegmentKind.Feed) continue;
+    const offset = segmentIndex * COORDINATES_PER_SEGMENT;
+    if ((coordinates[offset + 2] as number) >= stock.topZ && (coordinates[offset + 5] as number) >= stock.topZ) continue;
+    for (const pointOffset of [offset, offset + 3]) {
+      const x = coordinates[pointOffset] as number;
+      const y = coordinates[pointOffset + 1] as number;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  const area = {
+    minX: Math.max(minX - toolRadius, stock.minX),
+    minY: Math.max(minY - toolRadius, stock.minY),
+    maxX: Math.min(maxX + toolRadius, stock.maxX),
+    maxY: Math.min(maxY + toolRadius, stock.maxY),
+  };
+  return area.minX < area.maxX && area.minY < area.maxY ? area : null;
+}
+
+/**
+ * Lays a grid over the machined area with an uncut border, keeping every node inside the stock.
+ * Without cuts the grid covers the whole stock.
+ */
+function placeGrid(
+  stock: ReliefStock,
+  machinedArea: PlanarRectangle | null,
+  maxResolution: number,
+): { originX: number; originY: number; cellSize: number; columnCount: number; rowCount: number } {
+  const area = machinedArea ?? stock;
+  const longerSide = Math.max(area.maxX - area.minX, area.maxY - area.minY);
+  const marginCells = machinedArea ? MACHINED_AREA_MARGIN_CELLS : 0;
+  const cellSize = longerSide / Math.max(maxResolution - 1 - 2 * marginCells, 1);
+  const margin = cellSize * marginCells;
+
+  const fitAxis = (areaMin: number, areaMax: number, stockMin: number, stockMax: number): [number, number] => {
+    const nodeCount = Math.max(Math.ceil((areaMax - areaMin + 2 * margin) / cellSize) + 1, MIN_GRID_NODES);
+    const span = (nodeCount - 1) * cellSize;
+    if (span >= stockMax - stockMin) return [stockMin, nodeCount];
+    const origin = Math.min(Math.max(areaMin - margin, stockMin), stockMax - span);
+    return [origin, nodeCount];
+  };
+  const [originX, columnCount] = fitAxis(area.minX, area.maxX, stock.minX, stock.maxX);
+  const [originY, rowCount] = fitAxis(area.minY, area.maxY, stock.minY, stock.maxY);
+  return { originX, originY, cellSize, columnCount, rowCount };
 }
 
 /** Height grid carved by a cutter. Coordinates of a segment are passed as scalars to avoid allocations. */
@@ -182,16 +255,14 @@ export function computeRelief(toolpath: Toolpath, options: ReliefOptions): Relie
   const stock = options.stock ?? estimateStock(toolpath, toolRadius);
   if (!stock) return null;
   const stockTopZ = stock.topZ;
-  const stockWidth = stock.maxX - stock.minX;
-  const stockDepth = stock.maxY - stock.minY;
-  const cellSize = Math.max(stockWidth, stockDepth) / (options.maxResolution - 1);
+  const placement = placeGrid(stock, findMachinedArea(toolpath, stock, toolRadius), options.maxResolution);
 
   const grid = new CarvableHeightGrid(
-    Math.max(Math.ceil(stockWidth / cellSize) + 1, MIN_GRID_NODES),
-    Math.max(Math.ceil(stockDepth / cellSize) + 1, MIN_GRID_NODES),
-    stock.minX,
-    stock.minY,
-    cellSize,
+    placement.columnCount,
+    placement.rowCount,
+    placement.originX,
+    placement.originY,
+    placement.cellSize,
     stockTopZ,
     toolRadius,
   );
@@ -215,7 +286,15 @@ export function computeRelief(toolpath: Toolpath, options: ReliefOptions): Relie
 
   // An untouched workpiece of known size is still worth showing; an estimated one does not exist.
   if (!options.stock && grid.lowestZ >= stockTopZ) return null;
+  const gridMaxX = grid.originX + (grid.columnCount - 1) * grid.cellSize;
+  const gridMaxY = grid.originY + (grid.rowCount - 1) * grid.cellSize;
   return {
+    stockOutline: {
+      minX: Math.min(stock.minX, grid.originX),
+      minY: Math.min(stock.minY, grid.originY),
+      maxX: Math.max(stock.maxX, gridMaxX),
+      maxY: Math.max(stock.maxY, gridMaxY),
+    },
     columnCount: grid.columnCount,
     rowCount: grid.rowCount,
     originX: grid.originX,

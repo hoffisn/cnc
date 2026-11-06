@@ -248,7 +248,7 @@ const canStopMotion = computed(() => !machine.isIdle.value && !machine.isAlarm.v
 
 .jog__footer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 8px;
   margin-top: 12px;
 }

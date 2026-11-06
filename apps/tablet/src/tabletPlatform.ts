@@ -27,7 +27,7 @@ const SAVED_PROGRAMS_FOLDER = 'Rezets';
 const GCODE_FILE_EXTENSIONS = '.nc,.gcode,.ngc,.tap,.cnc,.txt';
 
 /** A tablet carves a coarser grid than a desktop, so that 3D stays fluid on a modest processor. */
-const TABLET_RELIEF_QUALITY = { programResolution: 260, designResolution: 360 };
+const TABLET_RELIEF_QUALITY = { programResolution: 520, designResolution: 720 };
 
 const describeFailure = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
