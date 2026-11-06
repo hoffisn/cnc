@@ -5,7 +5,7 @@ import vueParser from 'vue-eslint-parser';
 import tseslint from 'typescript-eslint';
 
 export default [
-  { ignores: ['**/node_modules/**', '**/out/**', '**/dist/**', '**/release/**', '**/test-results/**'] },
+  { ignores: ['**/node_modules/**', '**/out/**', '**/dist/**', '**/release/**', '**/test-results/**', 'apps/tablet/android/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...vue.configs['flat/recommended'],

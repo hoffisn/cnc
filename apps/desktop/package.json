@@ -16,24 +16,13 @@
     "serialport": "^13.0.0"
   },
   "devDependencies": {
-    "@codemirror/commands": "^6.8.0",
-    "@codemirror/language": "^6.13.1",
-    "@codemirror/lint": "^6.9.7",
-    "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.43.15",
-    "@fontsource-variable/inter": "^5.3.0",
-    "@fontsource-variable/jetbrains-mono": "^5.3.0",
-    "@lezer/highlight": "^1.2.5",
-    "@lucide/vue": "^1.68.0",
     "@rezets/core": "0.1.0",
-    "@types/three": "^0.187.0",
+    "@rezets/ui": "0.1.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "electron": "45.2.2",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
-    "three": "^0.187.0",
     "vite": "^8.3.5",
-    "vue": "^3.5.44",
     "vue-tsc": "^3.3.14"
   },
   "build": {

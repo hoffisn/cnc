@@ -5,7 +5,7 @@
     "types": ["vite/client"],
     "jsx": "preserve",
     "paths": {
-      "@/*": ["./src/renderer/src/*"],
+      "@ui/*": ["../../packages/ui/src/*"],
       "@core/*": ["../../packages/core/src/*"],
       "@shared/*": ["./src/shared/*"]
     }

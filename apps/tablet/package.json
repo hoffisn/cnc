@@ -1,0 +1,30 @@
+{
+  "name": "@rezets/tablet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rezets: a CNC machine control interface for Android tablets",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sync": "vite build && cap sync android",
+    "apk": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug",
+    "apk:release": "vite build && cap sync android && cd android && .\\gradlew.bat assembleRelease",
+    "typecheck": "vue-tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/preferences": "^8.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@rezets/core": "0.1.0",
+    "@rezets/ui": "0.1.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "vite": "^8.3.5",
+    "vue-tsc": "^3.3.14"
+  }
+}

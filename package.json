@@ -16,10 +16,12 @@
     "dist": "npm run dist -w @rezets/desktop",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run test:e2e -w @rezets/desktop",
-    "typecheck": "npm run typecheck -w @rezets/core && npm run typecheck -w @rezets/desktop",
+    "typecheck": "npm run typecheck -w @rezets/core && npm run typecheck -w @rezets/ui && npm run typecheck -w @rezets/desktop && npm run typecheck -w @rezets/tablet",
     "lint": "eslint .",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "dev:tablet": "npm run dev -w @rezets/tablet",
+    "apk": "npm run apk -w @rezets/tablet",
+    "apk:release": "npm run apk:release -w @rezets/tablet"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

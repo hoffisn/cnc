@@ -16,7 +16,7 @@ export default defineConfig({
   },
   renderer: {
     resolve: {
-      alias: { ...sharedAliases, '@': resolve(__dirname, 'src/renderer/src') },
+      alias: { ...sharedAliases, '@ui': resolve(__dirname, '../../packages/ui/src') },
     },
     server: {
       // "localhost" may resolve to IPv6 for the dev server and to IPv4 for the Electron window.

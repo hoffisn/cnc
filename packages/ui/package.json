@@ -1,0 +1,31 @@
+{
+  "name": "@rezets/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rezets user interface, shared by the desktop and tablet applications.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "@lucide/vue": "^1.68.0",
+    "@rezets/core": "0.1.0",
+    "three": "^0.187.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0",
+    "vue-tsc": "^3.3.14"
+  }
+}
